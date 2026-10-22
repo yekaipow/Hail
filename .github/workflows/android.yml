@@ -22,6 +22,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+          
       - name: Build with Gradle
         run: |
           touch signing.properties
