@@ -4,38 +4,137 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - '**.md'
-      - 'fastlane/**'
-      - '.github/**'
-      - '!.github/workflows/android.yml'
+    paths:
+      - 'app/**'
+      - 'gradle/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradlew'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+  ANDROID_HOME: /usr/local/lib/android/sdk
+  SDK_PLATFORM: android-36
+  BUILD_TOOLS: 36.0.0
+  GRADLE_ARGS: --no-daemon --stacktrace
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    if: ${{ !startsWith(github.event.head_commit.message, '[skip ci]') && github.repository_owner == 'aistra0528' }}
+    if: ${{ !startsWith(github.event.head_commit.message, '[skip ci]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
+
       - name: Setup Java JDK
         uses: actions/setup-java@v5.7.0
         with:
           distribution: 'temurin'
           java-version: '21'
-          
-      - name: Build with Gradle
+
+      - name: Restore Android SDK cache
+        id: sdk-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/platforms/android-36
+            /usr/local/lib/android/sdk/build-tools/36.0.0
+          key: android-sdk-${{ runner.os }}-36
+          restore-keys: |
+            android-sdk-${{ runner.os }}-
+
+      - name: Install missing Android SDK components
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
         run: |
-          touch signing.properties
-          echo storeFile=../keystore.jks >> signing.properties
-          echo storePassword=${{ secrets.KEYSTORE_PASSWORD }} >> signing.properties
-          echo keyAlias=${{ secrets.KEYSTORE_ALIAS }} >> signing.properties
-          echo keyPassword=${{ secrets.KEYSTORE_ALIAS_PASSWORD }} >> signing.properties
-          echo ${{ secrets.KEYSTORE }} | base64 --decode > keystore.jks
-          ./gradlew assembleRelease
-          echo "filename=$(jq -r '.elements.[0].outputFile' app/build/outputs/apk/release/output-metadata.json)" >> $GITHUB_ENV
-      - name: Upload a Build Artifact
+          SDK="$ANDROID_SDK_ROOT"
+          SDKMGR="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMGR" ]; then
+            echo "::error::sdkmanager not found at $SDKMGR"
+            exit 1
+          fi
+          yes | "$SDKMGR" --licenses > /dev/null 2>&1 || true
+          if [ ! -d "$SDK/platforms/$SDK_PLATFORM" ]; then
+            yes | "$SDKMGR" "platforms;$SDK_PLATFORM"
+          fi
+          if [ ! -d "$SDK/build-tools/$BUILD_TOOLS" ]; then
+            yes | "$SDKMGR" "build-tools;$BUILD_TOOLS"
+          fi
+          echo "platforms: $(ls "$SDK/platforms" | tr '\n' ' ')"
+          echo "build-tools: $(ls "$SDK/build-tools" | tr '\n' ' ')"
+
+      - name: Restore Gradle cache
+        id: gradle-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle', '**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Prepare signing config
+        id: signing
+        env:
+          KEYSTORE: ${{ secrets.KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEYSTORE_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
+          KEYSTORE_ALIAS_PASSWORD: ${{ secrets.KEYSTORE_ALIAS_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then
+            echo "::warning::KEYSTORE secret not set - falling back to debug signing"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE" | base64 --decode > keystore.jks
+          {
+            echo "storeFile=../keystore.jks"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEYSTORE_ALIAS"
+            echo "keyPassword=$KEYSTORE_ALIAS_PASSWORD"
+          } > signing.properties
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build release APK
+        id: build
+        run: |
+          ./gradlew assembleRelease $GRADLE_ARGS
+          META=app/build/outputs/apk/release/output-metadata.json
+          APK=$(jq -r '.elements[0].outputFile' "$META")
+          echo "apk=$APK" >> "$GITHUB_OUTPUT"
+          ls -lh "app/build/outputs/apk/release/$APK"
+
+      - name: Upload APK
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: ${{ env.filename }}
-          path: app/build/outputs/apk/release/${{ env.filename }}
-          archive: false
+          name: ${{ steps.build.outputs.apk }}
+          path: app/build/outputs/apk/release/${{ steps.build.outputs.apk }}
+          if-no-files-found: error
+
+      - name: Save Android SDK cache
+        if: steps.sdk-cache.outputs.cache-hit != 'true' && success()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/platforms/android-36
+            /usr/local/lib/android/sdk/build-tools/36.0.0
+          key: android-sdk-${{ runner.os }}-36
+
+      - name: Save Gradle cache
+        if: steps.gradle-cache.outputs.cache-hit != 'true' && success()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle', '**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties', 'gradle/libs.versions.toml') }}
