@@ -1,11 +1,8 @@
 package com.aistra.hails.ui.overlay
 
-import android.app.ActivityOptions
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
-import android.graphics.Rect
-import android.os.Build
 import android.provider.Settings
 import android.view.Gravity
 import android.view.ViewGroup.LayoutParams
@@ -128,42 +125,11 @@ class ShakeOverlayHost(private val context: Context) {
             val intent = context.packageManager.getLaunchIntentForPackage(packageName)
                 ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 ?: throw IllegalStateException("no launch intent")
-            startActivityFreeform(intent)
+            context.startActivity(intent)
         }.onFailure {
             HUI.showToast(R.string.activity_not_found)
         }
     }
 
-    /**
-     * 优先以自由窗口（Freeform）打开应用，配合摇一摇悬浮窗的快速操作场景；
-     * 设备不支持自由窗口（未开「强制允许自由窗口」且系统无此功能）时回退全屏启动。
-     */
-    private fun startActivityFreeform(intent: Intent) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            context.startActivity(intent)
-            return
-        }
-        try {
-            val options = ActivityOptions.makeBasic()
-            // WindowConfiguration.WINDOWING_MODE_FREEFORM 是隐藏常量，但值 5 一直稳定
-            options.setLaunchWindowingMode(WINDOWING_MODE_FREEFORM)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val metrics = context.resources.displayMetrics
-                val width = metrics.widthPixels * 3 / 5
-                val height = metrics.heightPixels * 3 / 5
-                val left = (metrics.widthPixels - width) / 2
-                val top = (metrics.heightPixels - height) / 4
-                options.setLaunchBounds(Rect(left, top, left + width, top + height))
-            }
-            context.startActivity(intent, options.toBundle())
-        } catch (e: Exception) {
-            // 部分 ROM 会拒绝窗口模式参数，回退全屏
-            context.startActivity(intent)
-        }
-    }
-
-    private companion object {
-        /** WindowConfiguration.WINDOWING_MODE_FREEFORM */
-        const val WINDOWING_MODE_FREEFORM = 5
-    }
 }
+
