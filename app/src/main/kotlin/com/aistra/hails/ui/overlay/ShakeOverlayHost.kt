@@ -5,7 +5,6 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.provider.Settings
 import android.view.Gravity
-import android.view.ViewGroup.LayoutParams
 import android.view.WindowManager
 import com.aistra.hails.R
 import com.aistra.hails.app.HailData
@@ -45,9 +44,6 @@ class ShakeOverlayHost(private val context: Context) {
             },
             onDrag = { dx, dy -> moveBy(dx, dy) }
         )
-        panel.onLayoutChanged = {
-            runCatching { windowManager.updateViewLayout(panel, params) }
-        }
         return try {
             windowManager.addView(panel, params)
             view = panel
@@ -79,12 +75,10 @@ class ShakeOverlayHost(private val context: Context) {
         val current = view ?: return
         val params = current.layoutParams as? WindowManager.LayoutParams ?: return
         val metrics = context.resources.displayMetrics
-        val viewWidth = current.width
-        val viewHeight = current.height
         params.x = (params.x + dx).toInt()
-            .coerceIn(0, (metrics.widthPixels - viewWidth).coerceAtLeast(0))
+            .coerceIn(0, (metrics.widthPixels - params.width).coerceAtLeast(0))
         params.y = (params.y + dy).toInt()
-            .coerceIn(0, (metrics.heightPixels - viewHeight).coerceAtLeast(0))
+            .coerceIn(0, (metrics.heightPixels - params.height).coerceAtLeast(0))
         runCatching { windowManager.updateViewLayout(current, params) }
         lastX = params.x
         lastY = params.y
@@ -94,7 +88,8 @@ class ShakeOverlayHost(private val context: Context) {
         val metrics = context.resources.displayMetrics
         val density = metrics.density
         val width = min((320 * density).toInt(), metrics.widthPixels - (32 * density).toInt())
-        val height = LayoutParams.WRAP_CONTENT
+        // 固定高度：最多三行图标，留出滚动余量，避免依赖 WRAP_CONTENT 的测量结果
+        val height = min((360 * density).toInt(), (metrics.heightPixels * 0.6f).toInt())
         return WindowManager.LayoutParams(
             width,
             height,

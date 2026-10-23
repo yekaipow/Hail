@@ -1,10 +1,11 @@
 package com.aistra.hails.ui.overlay
 
 import android.content.Context
-import android.graphics.Bitmap
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
+import android.graphics.drawable.Drawable
 import android.graphics.Typeface
 import android.text.TextUtils
 import android.view.Gravity
@@ -15,10 +16,10 @@ import android.view.ViewGroup.LayoutParams
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.Space
 import android.widget.TextView
 import androidx.appcompat.view.ContextThemeWrapper
-import androidx.core.graphics.drawable.toBitmap
 import com.aistra.hails.R
 import com.aistra.hails.app.AppManager
 import com.aistra.hails.app.HailData
@@ -39,7 +40,7 @@ import kotlinx.coroutines.withContext
 private data class OverlayApp(
     val packageName: String,
     val label: String,
-    val icon: Bitmap?,
+    val icon: Drawable?,
     val frozen: Boolean
 )
 
@@ -62,9 +63,6 @@ class ShakeOverlayPanel(
     private val gridContainer = LinearLayout(context)
     private var apps: List<OverlayApp> = emptyList()
 
-    /** 内容尺寸变化后通知宿主动手重新测量悬浮窗（窗口高度是 WRAP_CONTENT） */
-    var onLayoutChanged: (() -> Unit)? = null
-
     private val colorOnSurface by lazy { color(com.google.android.material.R.attr.colorOnSurface) }
     private val colorOnSurfaceVariant by lazy { color(com.google.android.material.R.attr.colorOnSurfaceVariant) }
     // colorPrimary 是 AppCompat 定义的属性，Material 的 R 里没有
@@ -75,7 +73,7 @@ class ShakeOverlayPanel(
         radius = dp(24).toFloat()
         cardElevation = dp(16).toFloat()
         setCardBackgroundColor(color(com.google.android.material.R.attr.colorSurface))
-        addView(buildContent(), FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        addView(buildContent(), FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         reload()
     }
 
@@ -93,7 +91,12 @@ class ShakeOverlayPanel(
             orientation = LinearLayout.VERTICAL
             addView(buildHeader(), LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
             addView(buildDivider())
-            addView(gridContainer, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+            addView(
+                ScrollView(context).apply {
+                    addView(gridContainer, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+                },
+                LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f)
+            )
             addView(buildDivider())
             addView(buildFooter(), LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         }
@@ -160,9 +163,9 @@ class ShakeOverlayPanel(
         setOnClickListener { onCellClick(app) }
 
         addView(ImageView(context).apply {
-            val bitmap = app.icon
-            if (bitmap != null) {
-                setImageBitmap(bitmap)
+            val icon = app.icon
+            if (icon != null) {
+                setImageDrawable(icon)
                 // 冻结应用显示为灰度，与首页一致
                 if (app.frozen) colorFilter = grayscale
             } else {
@@ -216,8 +219,6 @@ class ShakeOverlayPanel(
                 gridContainer.addView(row, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
             }
         }
-        // 内容高度变了，等这一帧布局完成再让宿主重新测量窗口
-        post { onLayoutChanged?.invoke() }
     }
 
     /**
@@ -297,24 +298,32 @@ class ShakeOverlayPanel(
         /** 网格列数，10 个应用正好排成三行 */
         const val COLUMNS = 4
 
-        /** 图标解码尺寸上限，过大只会浪费内存 */
-        const val ICON_SIZE = 72
+        /** 面板最多展示的应用数量 */
+        const val MAX_ITEMS = 10
 
-        /** 按「最近打开」顺序读取，卸载或读不到的应用直接跳过 */
+        /**
+         * 优先展示最近打开的 [MAX_ITEMS] 个应用；还没有任何记录（比如刚更新完、
+         * 还没从主界面启动过应用）时回退到首页应用，避免面板空白。
+         */
         fun loadApps(context: Context): List<OverlayApp> {
             val packageManager = context.packageManager
-            return RecentApps.list().mapNotNull { packageName ->
-                val applicationInfo = HPackages.getApplicationInfoOrNull(packageName) ?: return@mapNotNull null
-                val icon = runCatching {
-                    applicationInfo.loadIcon(packageManager).toBitmap(ICON_SIZE, ICON_SIZE)
-                }.getOrNull()
-                OverlayApp(
-                    packageName = packageName,
-                    label = applicationInfo.loadLabel(packageManager).toString(),
-                    icon = icon,
-                    frozen = AppManager.isAppFrozen(packageName)
-                )
-            }
+            val recent = resolve(packageManager, RecentApps.list())
+            val candidates = if (recent.isNotEmpty()) recent
+            else resolve(packageManager, HailData.checkedList.map { it.packageName })
+            return candidates.take(MAX_ITEMS)
+        }
+
+        /** 按传入顺序解析包名，卸载或读不到的应用直接跳过 */
+        private fun resolve(
+            packageManager: PackageManager, packageNames: List<String>
+        ): List<OverlayApp> = packageNames.mapNotNull { packageName ->
+            val applicationInfo = HPackages.getApplicationInfoOrNull(packageName) ?: return@mapNotNull null
+            OverlayApp(
+                packageName = packageName,
+                label = applicationInfo.loadLabel(packageManager).toString(),
+                icon = runCatching { applicationInfo.loadIcon(packageManager) }.getOrNull(),
+                frozen = AppManager.isAppFrozen(packageName)
+            )
         }
     }
 }

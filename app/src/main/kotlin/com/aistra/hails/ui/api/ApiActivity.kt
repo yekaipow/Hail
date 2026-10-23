@@ -30,6 +30,7 @@ import com.aistra.hails.app.AppInfo
 import com.aistra.hails.app.AppManager
 import com.aistra.hails.app.HailApi
 import com.aistra.hails.app.HailData
+import com.aistra.hails.app.RecentApps
 import com.aistra.hails.app.UnfrozenStore
 import com.aistra.hails.ui.theme.AppTheme
 import com.aistra.hails.utils.*
@@ -197,6 +198,7 @@ class ApiActivity : ComponentActivity() {
             HIsland.ensureLaunchIntentExists(packageName)
         }
         packageManager.getLaunchIntentForPackage(pkg)?.let {
+            RecentApps.add(pkg)
             HShortcuts.addDynamicShortcut(pkg)
             startActivity(it)
         } ?: throw ActivityNotFoundException(getString(R.string.activity_not_found))
