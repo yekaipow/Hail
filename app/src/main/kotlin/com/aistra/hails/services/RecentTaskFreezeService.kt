@@ -26,6 +26,7 @@ import com.aistra.hails.ui.main.MainActivity
 import com.aistra.hails.utils.HLog
 import com.aistra.hails.utils.HShell
 import com.aistra.hails.utils.HShizuku
+import com.aistra.hails.utils.HUI
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import com.aistra.hails.utils.HTarget
 import kotlinx.coroutines.CoroutineScope
@@ -169,7 +170,7 @@ class RecentTaskFreezeService : Service() {
                         if (data.dataAvail() == 4) {
                             data.readInt()
                             // Binder 线程没有 Looper，toast 必须回主线程
-                            mainHandler.post {
+                            handler.post {
                                 HUI.showToast(R.string.recent_task_freeze_debug_callback)
                             }
                             // 只在亮屏时响应，避免灭屏期间系统清理导致误冻
