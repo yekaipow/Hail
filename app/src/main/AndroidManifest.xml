@@ -140,6 +140,15 @@
             </intent-filter>
         </service>
         <service
+                android:name=".services.FloatingBallService"
+                android:exported="false"
+                android:foregroundServiceType="specialUse"
+                android:label="@string/shake_floating_ball">
+            <property
+                    android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                    android:value="floating_ball"/>
+        </service>
+        <service
                 android:name=".services.ShakeOverlayService"
                 android:exported="false"
                 android:foregroundServiceType="specialUse"

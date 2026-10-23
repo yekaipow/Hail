@@ -39,6 +39,7 @@ class MainActivity : AppCompatActivity(), NavController.OnDestinationChangedList
         val binding = initView()
         // 服务被系统回收后，回到应用时顺手把摇一摇悬浮窗恢复起来
         if (HailData.shakeOverlay && Settings.canDrawOverlays(this)) app.setShakeOverlayService(true)
+        if (HailData.shakeFloatingBall && Settings.canDrawOverlays(this)) app.setFloatingBallService(true)
         if (!HailData.biometricLogin || BiometricManager.from(this)
                 .canAuthenticate(BIOMETRIC_STRONG or DEVICE_CREDENTIAL) != BiometricManager.BIOMETRIC_SUCCESS
         ) return

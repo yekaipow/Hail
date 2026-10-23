@@ -12,6 +12,7 @@ import androidx.core.content.getSystemService
 import com.aistra.hails.app.AppManager
 import com.aistra.hails.app.HailData
 import com.aistra.hails.services.AutoFreezeService
+import com.aistra.hails.services.FloatingBallService
 import com.aistra.hails.services.ShakeOverlayService
 import com.aistra.hails.utils.HDhizuku
 import com.aistra.hails.utils.HTarget
@@ -46,6 +47,17 @@ class HailApp : Application() {
             if (enabled) PackageManager.COMPONENT_ENABLED_STATE_ENABLED else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
             PackageManager.DONT_KILL_APP
         )
+    }
+
+    /** 悬浮球独立服务，与摇一摇互不影响 */
+    fun setFloatingBallService(enabled: Boolean = HailData.shakeFloatingBall, context: Context = app) {
+        val intent = Intent(app, FloatingBallService::class.java)
+        if (!enabled) {
+            context.stopService(intent)
+            return
+        }
+        runCatching { ContextCompat.startForegroundService(context, intent) }
+            .onFailure { HUI.showToast(R.string.shake_overlay_start_failed) }
     }
 
     fun setShakeOverlayService(enabled: Boolean = HailData.shakeOverlay, context: Context = app) {

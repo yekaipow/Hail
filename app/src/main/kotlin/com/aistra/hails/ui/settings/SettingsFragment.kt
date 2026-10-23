@@ -41,7 +41,6 @@ import com.aistra.hails.app.AppManager
 import com.aistra.hails.app.HailApi
 import com.aistra.hails.app.HailData
 import com.aistra.hails.databinding.DialogInputBinding
-import com.aistra.hails.services.ShakeOverlayService
 import com.aistra.hails.ui.main.MainActivity
 import com.aistra.hails.ui.main.MainFragment
 import com.aistra.hails.ui.theme.AppTheme
@@ -266,9 +265,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 SwitchPreference(
                     value = shakeFloatingBall.value,
                     onValueChange = {
-                        shakeFloatingBall.value = it
-                        ShakeOverlayService.instance?.setFloatingBallEnabled(it)
-                        true
+                        if (onShakeFloatingBallChange(it)) shakeFloatingBall.value = it
                     },
                     title = { Text(text = stringResource(R.string.shake_floating_ball)) },
                     summary = { Text(text = stringResource(R.string.shake_floating_ball_desc)) },
@@ -409,6 +406,23 @@ class SettingsFragment : MainFragment(), MenuProvider {
             return false
         }
         app.setShakeOverlayService(enabled)
+        return true
+    }
+
+    private fun onShakeFloatingBallChange(enabled: Boolean): Boolean {
+        if (enabled && !Settings.canDrawOverlays(requireContext())) {
+            HUI.showToast(R.string.shake_overlay_permission)
+            runCatching {
+                startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:${requireContext().packageName}")
+                    )
+                )
+            }
+            return false
+        }
+        app.setFloatingBallService(enabled)
         return true
     }
 
