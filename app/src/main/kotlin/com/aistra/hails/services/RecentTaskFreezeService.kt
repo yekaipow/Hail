@@ -5,15 +5,14 @@ import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Binder
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import android.os.Parcel
 import android.os.PowerManager
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
+import com.aistra.hails.BuildConfig
 import com.aistra.hails.R
 import com.aistra.hails.app.AppManager
 import com.aistra.hails.app.HailData
@@ -22,7 +21,6 @@ import com.aistra.hails.ui.main.MainActivity
 import com.aistra.hails.utils.HLog
 import com.aistra.hails.utils.HShell
 import com.aistra.hails.utils.HShizuku
-import com.aistra.hails.utils.HUI
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import com.aistra.hails.utils.HTarget
 import kotlinx.coroutines.CoroutineScope
@@ -46,7 +44,6 @@ class RecentTaskFreezeService : Service() {
     private val channelId = javaClass.simpleName
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    private val handler = Handler(Looper.getMainLooper())
     private var taskStackBinder: Binder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -57,11 +54,7 @@ class RecentTaskFreezeService : Service() {
             buildNotification(),
             if (HTarget.U) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
         )
-        if (registerTaskStackListener()) {
-            HUI.showToast(R.string.recent_task_freeze_debug_listener_ok)
-        } else {
-            HUI.showToast(R.string.recent_task_freeze_debug_listener_failed)
-        }
+        registerTaskStackListener()
         return START_STICKY
     }
 
@@ -78,22 +71,28 @@ class RecentTaskFreezeService : Service() {
 
     /**
      * 查一次：把「冻结」栏里尚未冻结、但已经不在最近任务列表的应用冻结。
-     * （不依赖前后快照差集，任务被划走和自然结束都会被判定为"不在列表"）
+     * 白名单应用跳过；Hail 自身固定视为白名单。
      */
     private fun poll() {
         scope.launch {
-            val unfrozen = withContext(Dispatchers.IO) {
-                UnfrozenStore.packages().filter { it != packageName && !AppManager.isAppFrozen(it) }
+            val candidates = withContext(Dispatchers.IO) {
+                val whitelisted = HailData.checkedList
+                    .filter { it.whitelisted }
+                    .mapTo(mutableSetOf()) { it.packageName }
+                UnfrozenStore.packages().filter {
+                    it != BuildConfig.APPLICATION_ID &&
+                        it !in whitelisted &&
+                        !AppManager.isAppFrozen(it)
+                }
             }
             // 没有可冻结对象时跳过查询，省电
-            if (unfrozen.isEmpty()) return@launch
+            if (candidates.isEmpty()) return@launch
             val running = withContext(Dispatchers.IO) { queryRunningPackages() } ?: return@launch
-            val targets = unfrozen.filter { it !in running }
+            val targets = candidates.filter { it !in running }
             if (targets.isEmpty()) return@launch
             withContext(Dispatchers.IO) {
                 targets.forEach { AppManager.setAppFrozen(it, true) }
             }
-            HUI.showToast(R.string.recent_task_freeze_debug_frozen, targets.joinToString(", "))
         }
     }
 
@@ -117,10 +116,6 @@ class RecentTaskFreezeService : Service() {
                         // onTaskRemoved(int taskId)：参数只有一个 int
                         if (data.dataAvail() == 4) {
                             data.readInt()
-                            // Binder 线程没有 Looper，toast 必须回主线程
-                            handler.post {
-                                HUI.showToast(R.string.recent_task_freeze_debug_callback)
-                            }
                             // 只在亮屏时响应，避免灭屏期间系统清理导致误冻
                             if (isInteractive()) poll()
                         }

@@ -171,10 +171,6 @@
     <string name="shake_overlay_empty">这里还没有待处理的应用</string>
     <string name="recent_task_freeze">划走最近任务即冻结</string>
     <string name="recent_task_freeze_desc">冻结栏中未冻结的应用，任务被划走后自动冻结</string>
-    <string name="recent_task_freeze_debug_listener_ok">任务监听已注册（Shizuku）</string>
-    <string name="recent_task_freeze_debug_listener_failed">任务监听注册失败，请检查 Shizuku</string>
-    <string name="recent_task_freeze_debug_callback">任务发生变化</string>
-    <string name="recent_task_freeze_debug_frozen">已冻结：%1$s</string>
     <string name="recent_task_freeze_requires">需要 Shizuku 或 root 模式</string>
     <string name="shake_floating_ball">悬浮球</string>
     <string name="floating_ball_size">悬浮球大小</string>
