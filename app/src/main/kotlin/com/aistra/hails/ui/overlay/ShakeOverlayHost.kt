@@ -6,6 +6,8 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.ViewGroup.LayoutParams
@@ -14,6 +16,8 @@ import com.aistra.hails.R
 import com.aistra.hails.app.HailData
 import com.aistra.hails.ui.main.MainActivity
 import com.aistra.hails.utils.HIsland
+import com.aistra.hails.utils.HShell
+import com.aistra.hails.utils.HShizuku
 import com.aistra.hails.utils.HTarget
 import com.aistra.hails.utils.HUI
 import kotlin.math.min
@@ -138,33 +142,55 @@ class ShakeOverlayHost(private val context: Context) {
     }
 
     /**
-     * 以自由窗口（Freeform）打开：setLaunchWindowingMode(FREEFORM) + 居中 60%×60% 边界。
+     * 以自由窗口（Freeform）打开。
      *
-     * 注意 setLaunchWindowingMode 是 @hide API，公开 SDK 编译不可见，只能反射调用；
-     * 反射被系统限制、或设备未开「强制允许自由窗口」导致窗口模式被忽略时，
-     * 统一兜底回退全屏启动，不会崩。
+     * setLaunchWindowingMode 是 @hide API：Android 9+ 反射会被 hidden API 限制拦截，
+     * 因此优先走 Shizuku / root 的 shell —— `am start --windowingMode 5`（Android 9+ 支持），
+     * 不受 hidden API 限制。无特权时退回反射尝试，仍失败则全屏启动并提示。
+     *
+     * 另外最终能否小窗还取决于系统是否支持自由窗口
+     * （开发者选项「强制允许自由窗口」或 ROM 自带），不支持时系统会静默回退全屏。
      */
     private fun startActivityFreeform(intent: Intent) {
-        // setLaunchBounds 需 API 26+，更低版本没有边界可言，直接全屏
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            context.startActivity(intent)
+        val component = intent.component?.flattenToShortString()
+        val shellPath = component != null && (
+            HailData.workingMode.startsWith(HailData.SHIZUKU) ||
+                HailData.workingMode.startsWith(HailData.SU)
+            )
+        if (shellPath && component != null) {
+            val command = "am start --user current --windowingMode 5 -n $component"
+            val shizuku = HailData.workingMode.startsWith(HailData.SHIZUKU)
+            Thread {
+                val result = if (shizuku) HShizuku.execute(command) else HShell.execute(command, true)
+                // 老系统不认识 --windowingMode 参数会导致启动失败，回退普通全屏启动
+                if (result.first != 0) runOnMain { context.startActivity(intent) }
+            }.start()
             return
         }
-        try {
-            val options = ActivityOptions.makeBasic()
-            ActivityOptions::class.java
-                .getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType)
-                .invoke(options, WINDOWING_MODE_FREEFORM)
-            val metrics = context.resources.displayMetrics
-            val width = metrics.widthPixels * 3 / 5
-            val height = metrics.heightPixels * 3 / 5
-            val left = (metrics.widthPixels - width) / 2
-            val top = (metrics.heightPixels - height) / 4
-            options.setLaunchBounds(Rect(left, top, left + width, top + height))
-            context.startActivity(intent, options.toBundle())
-        } catch (e: Exception) {
-            context.startActivity(intent)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val options = ActivityOptions.makeBasic()
+                ActivityOptions::class.java
+                    .getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType)
+                    .invoke(options, WINDOWING_MODE_FREEFORM)
+                val metrics = context.resources.displayMetrics
+                val width = metrics.widthPixels * 3 / 5
+                val height = metrics.heightPixels * 3 / 5
+                val left = (metrics.widthPixels - width) / 2
+                val top = (metrics.heightPixels - height) / 4
+                options.setLaunchBounds(Rect(left, top, left + width, top + height))
+                context.startActivity(intent, options.toBundle())
+                return
+            } catch (e: Exception) {
+                // hidden API 被系统拦截等，走下方兜底
+            }
         }
+        context.startActivity(intent)
+        HUI.showToast(R.string.shake_freeform_unavailable)
+    }
+
+    private inline fun runOnMain(crossinline block: () -> Unit) {
+        Handler(Looper.getMainLooper()).post { block() }
     }
 
     private companion object {
