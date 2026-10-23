@@ -117,7 +117,7 @@ class ShakeOverlayPanel(
             addView(buildDivider())
             addView(gridContainer, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(EMPTY_HEIGHT_DP)))
             addView(buildDivider())
-            addView(buildFooter(), LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(FOOTER_DP)))
+            addView(buildFooter(), LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         }
     }
 
