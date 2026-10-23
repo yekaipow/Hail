@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import com.aistra.hails.R
 import com.aistra.hails.app.AppInfo
 import com.aistra.hails.app.HailData.tags
 import com.aistra.hails.databinding.FragmentHomeBinding
