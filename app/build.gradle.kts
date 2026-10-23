@@ -34,15 +34,27 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             if (!commitSubject.startsWith("[release]")) versionNameSuffix = "-g$commitHash"
-            signingConfig = if (signingProps.exists()) {
-                val props = `java.util`.Properties().apply { load(signingProps.reader()) }
-                signingConfigs.create("release") {
-                    storeFile = file(props.getProperty("storeFile"))
-                    storePassword = props.getProperty("storePassword")
-                    keyAlias = props.getProperty("keyAlias")
-                    keyPassword = props.getProperty("keyPassword")
+            val testKeystore = file("keystore/hail-test.jks")
+            signingConfig = when {
+                // 1) 正式签名：signing.properties 存在时优先（CI 由 secrets 生成）
+                signingProps.exists() -> {
+                    val props = `java.util`.Properties().apply { load(signingProps.reader()) }
+                    signingConfigs.create("release") {
+                        storeFile = file(props.getProperty("storeFile"))
+                        storePassword = props.getProperty("storePassword")
+                        keyAlias = props.getProperty("keyAlias")
+                        keyPassword = props.getProperty("keyPassword")
+                    }
                 }
-            } else signingConfigs.getByName("debug")
+                // 2) 临时固定签名：仓库内测试证书，保证每次构建签名一致，方便覆盖安装
+                testKeystore.exists() -> signingConfigs.create("testRelease") {
+                    storeFile = testKeystore
+                    storePassword = "hailtest2026"
+                    keyAlias = "hailtest"
+                    keyPassword = "hailtest2026"
+                }
+                else -> signingConfigs.getByName("debug")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             )

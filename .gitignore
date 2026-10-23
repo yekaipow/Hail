@@ -6,3 +6,5 @@
 *.iml
 *.jks
 *.keystore
+# 临时测试签名证书（仅用于 CI 固定签名测试，勿用于正式发布）
+!app/keystore/hail-test.jks

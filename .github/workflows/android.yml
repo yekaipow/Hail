@@ -114,6 +114,11 @@ jobs:
           echo "apk=$APK" >> "$GITHUB_OUTPUT"
           ls -lh "app/build/outputs/apk/release/$APK"
 
+      - name: Verify APK signature
+        run: |
+          APKSIGNER=$(ls "$ANDROID_SDK_ROOT"/build-tools/*/apksigner | tail -1)
+          "$APKSIGNER" verify --print-certs "app/build/outputs/apk/release/${{ steps.build.outputs.apk }}"
+
       - name: Upload APK
         uses: actions/upload-artifact@v7.0.1
         with:
