@@ -64,7 +64,7 @@ private data class OverlayApp(
 class ShakeOverlayPanel(
     context: Context,
     private val onClose: () -> Unit,
-    private val onOpenApp: (String?) -> Unit,
+    private val onOpenApp: (String?, Boolean) -> Unit,
     private val onDrag: (Float, Float) -> Unit
 ) : MaterialCardView(ContextThemeWrapper(context, R.style.Theme_Hail)) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -75,6 +75,10 @@ class ShakeOverlayPanel(
     /** 冻结模式开关：关闭时点击图标只打开/解冻；开启后点击即冻结。每次弹出面板自动复位 */
     private var freezeMode = false
     private lateinit var freezeModeButton: TextView
+
+    /** 小窗模式开关：开启后点击图标以 Freeform 自由窗口打开，否则全屏 */
+    private var freeformMode = false
+    private lateinit var freeformModeButton: TextView
 
     /**
      * 内容高度变化后回调，参数是面板应有的精确像素高度。
@@ -135,47 +139,63 @@ class ShakeOverlayPanel(
             setPadding(dp(8), 0, 0, 0)
         })
         addView(View(context), LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-        addView(textButton(context.getString(R.string.shake_open_app), 13f) { onOpenApp(null) })
+        addView(textButton(context.getString(R.string.shake_open_app), 13f) { onOpenApp(null, false) })
         addView(textButton("✕", 16f) { onClose() })
     }
 
     private fun buildFooter(): View = LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(8), 0, dp(8), 0)
-        addView(
-            textButton(context.getString(R.string.action_freeze_all), 13f) { setAll(true) },
-            LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
-        )
-        addView(
-            textButton(context.getString(R.string.action_unfreeze_all), 13f) { setAll(false) },
-            LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
-        )
-        freezeModeButton = textButton(context.getString(R.string.shake_freeze_mode), 13f) {
-            freezeMode = !freezeMode
-            styleFreezeModeButton()
-        }
-        styleFreezeModeButton()
-        addView(freezeModeButton, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-        addView(
-            textButton(context.getString(R.string.shake_lock_screen), 13f) { lockScreen() },
-            LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
-        )
+        orientation = LinearLayout.VERTICAL
+        // 第一行：批量操作 + 锁屏
+        addView(LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(
+                textButton(context.getString(R.string.action_freeze_all), 13f) { setAll(true) },
+                LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
+            )
+            addView(
+                textButton(context.getString(R.string.action_unfreeze_all), 13f) { setAll(false) },
+                LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
+            )
+            addView(
+                textButton(context.getString(R.string.shake_lock_screen), 13f) { lockScreen() },
+                LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
+            )
+        }, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(FOOTER_DP)))
+        // 第二行：两个点击行为开关
+        addView(LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            freezeModeButton = textButton(context.getString(R.string.shake_freeze_mode), 13f) {
+                freezeMode = !freezeMode
+                styleModeButton(freezeModeButton, freezeMode)
+            }
+            styleModeButton(freezeModeButton, freezeMode)
+            addView(freezeModeButton, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+            freeformModeButton = textButton(context.getString(R.string.shake_freeform_mode), 13f) {
+                freeformMode = !freeformMode
+                styleModeButton(freeformModeButton, freeformMode)
+            }
+            styleModeButton(freeformModeButton, freeformMode)
+            addView(freeformModeButton, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        }, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(FOOTER_DP)))
     }
 
     /**
-     * 冻结模式按钮的激活态标识（三重）：圆角主色背景 + 「●」前缀 + 主色加粗；
+     * 模式开关按钮的激活态标识（三重）：圆角主色背景 + 「●」前缀 + 主色加粗；
      * 未激活时无背景、弱化文字色。
      */
-    private fun styleFreezeModeButton() {
-        val label = context.getString(R.string.shake_freeze_mode)
-        freezeModeButton.text = if (freezeMode) "● $label" else label
-        freezeModeButton.setTextColor(if (freezeMode) colorPrimary else colorOnSurfaceVariant)
-        freezeModeButton.typeface = if (freezeMode) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-        freezeModeButton.background = GradientDrawable().apply {
+    private fun styleModeButton(button: TextView, active: Boolean) {
+        val label = context.getString(
+            if (button === freezeModeButton) R.string.shake_freeze_mode else R.string.shake_freeform_mode
+        )
+        button.text = if (active) "● $label" else label
+        button.setTextColor(if (active) colorPrimary else colorOnSurfaceVariant)
+        button.typeface = if (active) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+        button.background = GradientDrawable().apply {
             cornerRadius = dp(16).toFloat()
             // 主色 20% 透明度作为选中底色，未选中完全透明
-            setColor(if (freezeMode) colorPrimary and 0x00FFFFFF or 0x33000000 else Color.TRANSPARENT)
+            setColor(if (active) colorPrimary and 0x00FFFFFF or 0x33000000 else Color.TRANSPARENT)
         }
     }
 
@@ -287,7 +307,7 @@ class ShakeOverlayPanel(
         val gridHeight = if (rows.isEmpty()) dp(EMPTY_HEIGHT_DP) else rows.size * dp(CELL_SIZE_DP)
         (gridContainer.layoutParams as LinearLayout.LayoutParams).height = gridHeight
         gridContainer.requestLayout()
-        val totalHeight = dp(HEADER_DP) + dp(FOOTER_DP) + gridHeight + 2 // + 两条 1px 分隔线
+        val totalHeight = dp(HEADER_DP) + dp(FOOTER_DP) * 2 + gridHeight + 2 // + 两条 1px 分隔线
         post { onContentHeightChanged?.invoke(totalHeight) }
     }
 
@@ -310,7 +330,7 @@ class ShakeOverlayPanel(
                         notifyFailure()
                         return@launch
                     }
-                    onOpenApp(app.packageName)
+                    onOpenApp(app.packageName, freeformMode)
                 }
                 freezeMode -> {
                     // 冻结成功后：未锁定的项由 AppManager 移出列表，锁定的保留
@@ -320,7 +340,7 @@ class ShakeOverlayPanel(
                         reload()
                     } else notifyFailure()
                 }
-                else -> onOpenApp(app.packageName)
+                else -> onOpenApp(app.packageName, freeformMode)
             }
         }
     }

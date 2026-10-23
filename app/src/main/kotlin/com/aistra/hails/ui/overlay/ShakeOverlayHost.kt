@@ -1,8 +1,11 @@
 package com.aistra.hails.ui.overlay
 
+import android.app.ActivityOptions
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
+import android.graphics.Rect
+import android.os.Build
 import android.provider.Settings
 import android.view.Gravity
 import android.view.ViewGroup.LayoutParams
@@ -39,9 +42,9 @@ class ShakeOverlayHost(private val context: Context) {
         val panel = ShakeOverlayPanel(
             context,
             onClose = { hide() },
-            onOpenApp = { packageName ->
+            onOpenApp = { packageName, freeform ->
                 hide()
-                openApp(packageName)
+                openApp(packageName, freeform)
             },
             onDrag = { dx, dy -> moveBy(dx, dy) }
         )
@@ -114,8 +117,11 @@ class ShakeOverlayHost(private val context: Context) {
         }
     }
 
-    /** @param packageName 为 null 时打开 Hail 主界面 */
-    private fun openApp(packageName: String?) {
+    /**
+     * @param packageName 为 null 时打开 Hail 主界面
+     * @param freeform true 时以自由窗口方式打开（设备不支持时系统自动回退全屏）
+     */
+    private fun openApp(packageName: String?, freeform: Boolean) {
         runCatching {
             if (packageName == null) {
                 context.startActivity(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -125,11 +131,43 @@ class ShakeOverlayHost(private val context: Context) {
             val intent = context.packageManager.getLaunchIntentForPackage(packageName)
                 ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 ?: throw IllegalStateException("no launch intent")
-            context.startActivity(intent)
+            if (freeform) startActivityFreeform(intent) else context.startActivity(intent)
         }.onFailure {
             HUI.showToast(R.string.activity_not_found)
         }
     }
 
+    /**
+     * 以自由窗口（Freeform）打开：setLaunchWindowingMode(FREEFORM) + 居中 60%×60% 边界。
+     * 设备未开「强制允许自由窗口」且无此系统功能时，部分 ROM 会拒绝参数或忽略窗口模式，
+     * 统一兜底回退全屏启动。
+     */
+    private fun startActivityFreeform(intent: Intent) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            context.startActivity(intent)
+            return
+        }
+        try {
+            val options = ActivityOptions.makeBasic()
+            // WindowConfiguration.WINDOWING_MODE_FREEFORM 是隐藏常量，但值 5 一直稳定
+            options.setLaunchWindowingMode(WINDOWING_MODE_FREEFORM)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val metrics = context.resources.displayMetrics
+                val width = metrics.widthPixels * 3 / 5
+                val height = metrics.heightPixels * 3 / 5
+                val left = (metrics.widthPixels - width) / 2
+                val top = (metrics.heightPixels - height) / 4
+                options.setLaunchBounds(Rect(left, top, left + width, top + height))
+            }
+            context.startActivity(intent, options.toBundle())
+        } catch (e: Exception) {
+            context.startActivity(intent)
+        }
+    }
+
+    private companion object {
+        /** WindowConfiguration.WINDOWING_MODE_FREEFORM */
+        const val WINDOWING_MODE_FREEFORM = 5
+    }
 }
 

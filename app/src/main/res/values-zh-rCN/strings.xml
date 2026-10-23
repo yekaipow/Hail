@@ -170,6 +170,7 @@
     <string name="shake_overlay_start_failed">摇一摇服务启动失败，请回到设置重新开启</string>
     <string name="shake_overlay_empty">这里还没有待处理的应用</string>
     <string name="shake_lock_screen">锁屏</string>
+    <string name="shake_freeform_mode">小窗</string>
     <string name="shake_freeze_mode">冻结</string>
     <string name="shake_lock_screen_unavailable">锁屏需要激活设备管理员、root 或 Shizuku</string>
     <string name="shake_state_frozen">已冻结</string>
