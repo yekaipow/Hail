@@ -6,16 +6,9 @@ import android.graphics.PixelFormat
 import android.provider.Settings
 import android.view.Gravity
 import android.view.WindowManager
-import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.LifecycleRegistry
-import androidx.lifecycle.ViewTreeLifecycleOwner
 import com.aistra.hails.R
 import com.aistra.hails.app.HailData
 import com.aistra.hails.ui.main.MainActivity
-import com.aistra.hails.ui.theme.AppTheme
 import com.aistra.hails.utils.HIsland
 import com.aistra.hails.utils.HTarget
 import com.aistra.hails.utils.HUI
@@ -24,14 +17,12 @@ import kotlin.math.min
 /**
  * 摇一摇悬浮窗的宿主。
  *
- * 职责：持有 WindowManager 窗口的生命周期、记住上次的拖动位置、为 Compose 提供
- * ViewTreeLifecycleOwner（Service 里没有 Activity 的 View 树，必须手动挂）。
- * 悬浮窗内容是 [ShakeOverlayPanel]。
+ * 职责：持有 WindowManager 窗口、记住上次的拖动位置、把面板回调接到应用启动逻辑上。
+ * 悬浮窗内容是 [ShakeOverlayPanel]（纯 View 实现）。
  */
 class ShakeOverlayHost(private val context: Context) {
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    private val lifecycleOwner = OverlayLifecycleOwner()
-    private var view: ComposeView? = null
+    private var view: ShakeOverlayPanel? = null
     private var lastX = Int.MIN_VALUE
     private var lastY = Int.MIN_VALUE
 
@@ -44,30 +35,21 @@ class ShakeOverlayHost(private val context: Context) {
             return false
         }
         val params = createLayoutParams()
-        val composeView = ComposeView(context).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-            ViewTreeLifecycleOwner.set(this, lifecycleOwner)
-            setContent {
-                AppTheme {
-                    ShakeOverlayPanel(
-                        onClose = { hide() },
-                        onOpenApp = { packageName ->
-                            hide()
-                            openApp(packageName)
-                        },
-                        onDrag = { dx, dy -> moveBy(dx, dy) }
-                    )
-                }
-            }
-        }
-        lifecycleOwner.resume()
+        val panel = ShakeOverlayPanel(
+            context,
+            onClose = { hide() },
+            onOpenApp = { packageName ->
+                hide()
+                openApp(packageName)
+            },
+            onDrag = { dx, dy -> moveBy(dx, dy) }
+        )
         return try {
-            windowManager.addView(composeView, params)
-            view = composeView
+            windowManager.addView(panel, params)
+            view = panel
             true
         } catch (e: Exception) {
             // 权限被回收或窗口被系统拒绝时不要把服务搞崩
-            lifecycleOwner.pause()
             HUI.showToast(R.string.shake_overlay_permission)
             false
         }
@@ -80,14 +62,13 @@ class ShakeOverlayHost(private val context: Context) {
             lastY = it.y
         }
         runCatching { windowManager.removeView(current) }
+        current.release()
         view = null
-        lifecycleOwner.pause()
     }
 
-    /** 服务销毁时调用，彻底释放生命周期 */
+    /** 服务销毁时调用 */
     fun release() {
         hide()
-        lifecycleOwner.destroy()
     }
 
     private fun moveBy(dx: Float, dy: Float) {
@@ -136,26 +117,5 @@ class ShakeOverlayHost(private val context: Context) {
         }.onFailure {
             HUI.showToast(R.string.activity_not_found)
         }
-    }
-}
-
-/**
- * 给 WindowManager 里的 ComposeView 兜底的 LifecycleOwner。
- * Compose 只要求 ViewTreeLifecycleOwner 存在，这里不需要 ViewModelStore/SavedState。
- */
-private class OverlayLifecycleOwner : LifecycleOwner {
-    private val registry = LifecycleRegistry(this)
-    override val lifecycle: Lifecycle get() = registry
-
-    fun resume() {
-        if (registry.currentState != Lifecycle.State.DESTROYED) registry.currentState = Lifecycle.State.RESUMED
-    }
-
-    fun pause() {
-        if (registry.currentState == Lifecycle.State.RESUMED) registry.currentState = Lifecycle.State.CREATED
-    }
-
-    fun destroy() {
-        registry.currentState = Lifecycle.State.DESTROYED
     }
 }
