@@ -95,6 +95,15 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 icon = Icons.Outlined.Adb,
                 type = ListPreferenceType.ALERT_DIALOG
             )
+            // 仅当当前是本机的设备所有者 / 配置文件所有者 / 管理员时显示
+            if (HPolicy.isDeviceOwnerActive || HPolicy.isProfileOwner || HPolicy.isAdminActive) {
+                preference(
+                    key = "remove_owner",
+                    title = { Text(text = stringResource(R.string.title_remove_owner)) },
+                    icon = { Icon(imageVector = Icons.Outlined.AdminPanelSettings, contentDescription = null) },
+                    onClick = ::onRemoveOwner
+                )
+            }
             switchPreference(
                 key = HailData.BIOMETRIC_LOGIN,
                 defaultValue = false,
@@ -439,6 +448,21 @@ class SettingsFragment : MainFragment(), MenuProvider {
         }
         app.setShakeOverlayService(enabled)
         return true
+    }
+
+    /** 解除所有者/管理员权限：设备所有者走既有确认框，配置文件所有者与管理员直接解除 */
+    private fun onRemoveOwner() {
+        when {
+            HPolicy.isDeviceOwnerActive -> (requireActivity() as MainActivity).ownerRemoveDialog()
+            HPolicy.isProfileOwner -> MaterialAlertDialogBuilder(requireContext())
+                .setTitle(R.string.title_remove_owner)
+                .setMessage(R.string.msg_remove_owner)
+                .setPositiveButton(R.string.action_continue) { _, _ -> HPolicy.removeProfileOwner() }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+
+            HPolicy.isAdminActive -> HPolicy.removeActiveAdmin()
+        }
     }
 
     private fun onRecentTaskFreezeChange(enabled: Boolean): Boolean {
