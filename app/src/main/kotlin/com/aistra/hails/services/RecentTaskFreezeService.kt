@@ -52,7 +52,8 @@ class RecentTaskFreezeService : Service() {
         override fun run() {
             if (!polling) return
             poll()
-            handler.postDelayed(this, POLL_INTERVAL_MS)
+            // 每轮重新读取设置，改间隔后无需重启服务即可生效
+            handler.postDelayed(this, HailData.recentTaskFreezeInterval.toPollIntervalMs())
         }
     }
 
@@ -99,6 +100,9 @@ class RecentTaskFreezeService : Service() {
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
+
+    private fun Float.toPollIntervalMs(): Long =
+        (this * 1000).toLong().coerceIn(MIN_POLL_INTERVAL_MS, MAX_POLL_INTERVAL_MS)
 
     private fun isInteractive(): Boolean =
         (getSystemService(POWER_SERVICE) as? PowerManager)?.isInteractive == true
@@ -186,7 +190,8 @@ class RecentTaskFreezeService : Service() {
     private companion object {
         const val NOTIFICATION_ID = 103
 
-        /** 轮询间隔：2 秒，兼顾及时性与耗电 */
-        const val POLL_INTERVAL_MS = 2000L
+        /** 轮询间隔下限 / 上限（毫秒），对应设置里的 2-10 秒 */
+        const val MIN_POLL_INTERVAL_MS = 2000L
+        const val MAX_POLL_INTERVAL_MS = 10000L
     }
 }

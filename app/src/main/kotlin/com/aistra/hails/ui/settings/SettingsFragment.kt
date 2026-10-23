@@ -207,6 +207,16 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 )
             }
             sliderPreference(
+                key = HailData.RECENT_TASK_FREEZE_INTERVAL,
+                defaultValue = 2f,
+                title = { Text(text = stringResource(R.string.recent_task_freeze_interval)) },
+                valueRange = 2f..10f,
+                valueSteps = 8,
+                enabled = { recentTaskFreeze.value },
+                icon = { Icon(imageVector = Icons.Outlined.Timer, contentDescription = null) },
+                valueText = { Text(text = "${it.toInt()}s") }
+            )
+            sliderPreference(
                 key = HailData.AUTO_FREEZE_DELAY,
                 defaultValue = 0f,
                 title = { Text(text = stringResource(R.string.auto_freeze_delay)) },
