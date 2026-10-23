@@ -15,7 +15,6 @@ import android.view.ViewGroup.LayoutParams
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.Space
 import android.widget.TextView
 import androidx.appcompat.view.ContextThemeWrapper
 import androidx.core.graphics.drawable.toBitmap
@@ -24,7 +23,6 @@ import com.aistra.hails.app.AppManager
 import com.aistra.hails.app.AppInfo
 import com.aistra.hails.app.HailData
 import com.aistra.hails.app.UnfrozenStore
-import com.aistra.hails.utils.HPackages
 import com.aistra.hails.utils.HUI
 import com.aistra.hails.utils.NameComparator
 import com.google.android.material.card.MaterialCardView
@@ -208,16 +206,25 @@ class ShakeOverlayPanel(
                 setPadding(dp(20), dp(28), dp(20), dp(28))
             })
         } else {
-            // 每行 [COLUMNS] 个，不足时用空格子补齐，保证列宽一致
+            /*
+             * 每行固定 [COLUMNS] 个【固定尺寸】格子，不用 weight。
+             * 之前用 weight=1 平分宽度，格子测量宽度先按 0 处理、布局阶段再分配，
+             * 在 WindowManager 宿主里测量时序不可控，会出现所有格子挤在一行的问题。
+             */
+            val cell = cellSize()
             apps.chunked(COLUMNS).forEach { rowApps ->
-                val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+                val row = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_HORIZONTAL
+                }
                 rowApps.forEach { app ->
-                    row.addView(buildCell(app), LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+                    row.addView(buildCell(app), LinearLayout.LayoutParams(cell, cell))
                 }
+                // 不足一行时用透明占位补齐，保证整行总宽恒定
                 repeat(COLUMNS - rowApps.size) {
-                    row.addView(Space(context), LinearLayout.LayoutParams(0, 1, 1f))
+                    row.addView(View(context), LinearLayout.LayoutParams(cell, cell))
                 }
-                gridContainer.addView(row, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+                gridContainer.addView(row, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, cell))
             }
         }
         titleView.text = if (apps.isEmpty()) context.getString(R.string.label_unfrozen)
@@ -270,6 +277,18 @@ class ShakeOverlayPanel(
 
     // endregion
 
+    /**
+     * 单个格子的边长：优先用与首页一致的 [CELL_SIZE_DP]，
+     * 屏幕太窄放不下四列时按可用宽度均分，保证一行只会出现 [COLUMNS] 个格子。
+     */
+    private fun cellSize(): Int {
+        val available = if (gridContainer.width > 0) {
+            gridContainer.width - gridContainer.paddingLeft - gridContainer.paddingRight
+        } else 0
+        val preferred = dp(CELL_SIZE_DP) * COLUMNS
+        return if (available >= preferred) dp(CELL_SIZE_DP) else (available / COLUMNS).coerceAtLeast(dp(48))
+    }
+
     private fun color(attrRes: Int): Int = MaterialColors.getColor(this, attrRes, Color.BLACK)
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
@@ -301,6 +320,9 @@ class ShakeOverlayPanel(
     private companion object {
         /** 网格列数，10 个应用正好排成三行 */
         const val COLUMNS = 4
+
+        /** 格子边长（dp），与首页网格的行高一致 */
+        const val CELL_SIZE_DP = 76
 
         /** 面板最多展示的应用数量 */
         const val MAX_ITEMS = 10
