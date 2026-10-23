@@ -446,8 +446,6 @@ class PagerFragment : MainFragment(), PagerAdapter.OnItemClickListener, PagerAda
             null -> HUI.showToast(R.string.permission_denied)
             else -> {
                 if (updateList) updateCurrentList()
-                // 底部「冻结」栏中锁定的应用可能被冻结/解冻，刷新其灰显状态
-                (parentFragment as? HomeFragment)?.updateFrozenBar()
                 HUI.showToast(
                     if (frozen) R.string.msg_freeze else R.string.msg_unfreeze, result
                 )
