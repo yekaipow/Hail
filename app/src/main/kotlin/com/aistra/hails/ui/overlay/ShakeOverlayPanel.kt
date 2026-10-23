@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
+import android.graphics.drawable.GradientDrawable
 import android.graphics.Typeface
 import android.text.TextUtils
 import android.view.Gravity
@@ -162,10 +163,20 @@ class ShakeOverlayPanel(
         )
     }
 
-    /** 冻结模式按钮：激活时主色加粗，未激活时弱化，让当前点击行为一眼可辨 */
+    /**
+     * 冻结模式按钮的激活态标识（三重）：圆角主色背景 + 「●」前缀 + 主色加粗；
+     * 未激活时无背景、弱化文字色。
+     */
     private fun styleFreezeModeButton() {
+        val label = context.getString(R.string.shake_freeze_mode)
+        freezeModeButton.text = if (freezeMode) "● $label" else label
         freezeModeButton.setTextColor(if (freezeMode) colorPrimary else colorOnSurfaceVariant)
         freezeModeButton.typeface = if (freezeMode) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+        freezeModeButton.background = GradientDrawable().apply {
+            cornerRadius = dp(16).toFloat()
+            // 主色 20% 透明度作为选中底色，未选中完全透明
+            setColor(if (freezeMode) colorPrimary and 0x00FFFFFF or 0x33000000 else Color.TRANSPARENT)
+        }
     }
 
     private fun buildDivider() = View(context).apply {
