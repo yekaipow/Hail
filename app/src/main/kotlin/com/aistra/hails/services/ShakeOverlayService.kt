@@ -50,11 +50,20 @@ class ShakeOverlayService : Service() {
     private var sensorWarningShown = false
     private var floatingBall: View? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val windowManager by lazy { getSystemService(WINDOW_SERVICE) as WindowManager }
 
     companion object {
         /** 设置页实时通知运行中的服务挂 / 摘悬浮球 */
         var instance: ShakeOverlayService? = null
             private set
+
+        private const val NOTIFICATION_ID = 101
+        private const val BALL_SIZE_DP = 44
+        private const val BALL_MARGIN_DP = 16
+        private const val BALL_LONG_PRESS_MS = 500L
+
+        /** 半透明深灰圆底，深浅主题下都能看清 */
+        private const val BALL_BACKGROUND = 0x99333333.toInt()
     }
 
     private val screenReceiver = object : BroadcastReceiver() {
@@ -266,15 +275,5 @@ class ShakeOverlayService : Service() {
             .setName(getString(R.string.shake_overlay))
             .build()
         NotificationManagerCompat.from(this).createNotificationChannel(channel)
-    }
-
-    private companion object {
-        const val NOTIFICATION_ID = 101
-        const val BALL_SIZE_DP = 44
-        const val BALL_MARGIN_DP = 16
-        const val BALL_LONG_PRESS_MS = 500L
-
-        /** 半透明深灰圆底，深浅主题下都能看清 */
-        const val BALL_BACKGROUND = 0x99333333.toInt()
     }
 }
