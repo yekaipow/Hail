@@ -169,6 +169,9 @@
     <string name="shake_overlay_no_sensor">未找到加速度传感器，无法使用摇一摇</string>
     <string name="shake_overlay_start_failed">摇一摇服务启动失败，请回到设置重新开启</string>
     <string name="shake_overlay_empty">这里还没有待处理的应用</string>
+    <string name="recent_task_freeze">划走最近任务即冻结</string>
+    <string name="recent_task_freeze_desc">冻结栏中未冻结的应用，任务被划走后自动冻结</string>
+    <string name="recent_task_freeze_requires">需要 Shizuku 或 root 模式</string>
     <string name="shake_floating_ball">悬浮球</string>
     <string name="shake_floating_ball_desc">显示悬浮球，点击开关悬浮窗</string>
     <string name="shake_floating_ball_long_press">长按动作</string>

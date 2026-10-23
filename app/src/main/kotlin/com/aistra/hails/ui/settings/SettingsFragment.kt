@@ -82,6 +82,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
         val autoFreezeAfterLock = rememberPreferenceState(HailData.AUTO_FREEZE_AFTER_LOCK, false)
         val shakeOverlay = rememberPreferenceState(HailData.SHAKE_OVERLAY, false)
         val shakeFloatingBall = rememberPreferenceState(HailData.SHAKE_FLOATING_BALL, false)
+        val recentTaskFreeze = rememberPreferenceState(HailData.RECENT_TASK_FREEZE, false)
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             listPreference(
                 key = HailData.WORKING_MODE,
@@ -194,6 +195,17 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 titleId = R.string.auto_freeze_after_lock,
                 icon = Icons.Outlined.ScreenLockPortrait
             )
+            item(key = HailData.RECENT_TASK_FREEZE, contentType = "SwitchPreference") {
+                SwitchPreference(
+                    value = recentTaskFreeze.value,
+                    onValueChange = {
+                        if (onRecentTaskFreezeChange(it)) recentTaskFreeze.value = it
+                    },
+                    title = { Text(text = stringResource(R.string.recent_task_freeze)) },
+                    summary = { Text(text = stringResource(R.string.recent_task_freeze_desc)) },
+                    icon = { Icon(imageVector = Icons.Outlined.DeleteSweep, contentDescription = null) }
+                )
+            }
             sliderPreference(
                 key = HailData.AUTO_FREEZE_DELAY,
                 defaultValue = 0f,
@@ -406,6 +418,17 @@ class SettingsFragment : MainFragment(), MenuProvider {
             return false
         }
         app.setShakeOverlayService(enabled)
+        return true
+    }
+
+    private fun onRecentTaskFreezeChange(enabled: Boolean): Boolean {
+        val privileged = HailData.workingMode.startsWith(HailData.SHIZUKU) ||
+            HailData.workingMode.startsWith(HailData.SU)
+        if (enabled && !privileged) {
+            HUI.showToast(R.string.recent_task_freeze_requires)
+            return false
+        }
+        app.setRecentTaskFreezeService(enabled)
         return true
     }
 

@@ -119,6 +119,7 @@ object HailData {
             ACTION_LOCK_FREEZE
         )
     const val AUTO_FREEZE_AFTER_LOCK = "auto_freeze_after_lock"
+    const val RECENT_TASK_FREEZE = "recent_task_freeze"
     const val AUTO_FREEZE_DELAY = "auto_freeze_delay_f"
     const val SKIP_WHILE_CHARGING = "skip_while_charging"
     const val SKIP_FOREGROUND_APP = "skip_foreground_app"
@@ -159,6 +160,11 @@ object HailData {
     var autoFreezeAfterLock
         get() = sp.getBoolean(AUTO_FREEZE_AFTER_LOCK, false)
         set(value) = sp.edit { putBoolean(AUTO_FREEZE_AFTER_LOCK, value) }
+
+    /** 划走最近任务即冻结「冻结」栏里未冻结的应用 */
+    var recentTaskFreeze
+        get() = sp.getBoolean(RECENT_TASK_FREEZE, false)
+        set(value) = sp.edit { putBoolean(RECENT_TASK_FREEZE, value) }
     val autoFreezeDelay get() = sp.getFloat(AUTO_FREEZE_DELAY, 0f).toLong()
     val skipWhileCharging get() = sp.getBoolean(SKIP_WHILE_CHARGING, false)
     val skipForegroundApp get() = sp.getBoolean(SKIP_FOREGROUND_APP, false)

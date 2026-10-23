@@ -13,6 +13,7 @@ import com.aistra.hails.app.AppManager
 import com.aistra.hails.app.HailData
 import com.aistra.hails.services.AutoFreezeService
 import com.aistra.hails.services.FloatingBallService
+import com.aistra.hails.services.RecentTaskFreezeService
 import com.aistra.hails.services.ShakeOverlayService
 import com.aistra.hails.utils.HDhizuku
 import com.aistra.hails.utils.HTarget
@@ -47,6 +48,12 @@ class HailApp : Application() {
             if (enabled) PackageManager.COMPONENT_ENABLED_STATE_ENABLED else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
             PackageManager.DONT_KILL_APP
         )
+    }
+
+    /** 划走最近任务即冻结 */
+    fun setRecentTaskFreezeService(enabled: Boolean = HailData.recentTaskFreeze, context: Context = app) {
+        val intent = Intent(app, RecentTaskFreezeService::class.java)
+        if (enabled) ContextCompat.startForegroundService(context, intent) else context.stopService(intent)
     }
 
     /** 悬浮球独立服务，与摇一摇互不影响 */

@@ -140,6 +140,15 @@
             </intent-filter>
         </service>
         <service
+                android:name=".services.RecentTaskFreezeService"
+                android:exported="false"
+                android:foregroundServiceType="specialUse"
+                android:label="@string/recent_task_freeze">
+            <property
+                    android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                    android:value="recent_task_freeze"/>
+        </service>
+        <service
                 android:name=".services.FloatingBallService"
                 android:exported="false"
                 android:foregroundServiceType="specialUse"
