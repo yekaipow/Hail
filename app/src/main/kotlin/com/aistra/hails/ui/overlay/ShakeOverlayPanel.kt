@@ -15,15 +15,16 @@ import android.view.ViewGroup.LayoutParams
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ScrollView
+import android.widget.Space
 import android.widget.TextView
 import androidx.appcompat.view.ContextThemeWrapper
 import androidx.core.graphics.drawable.toBitmap
-import com.aistra.hails.BuildConfig
 import com.aistra.hails.R
 import com.aistra.hails.app.AppManager
 import com.aistra.hails.app.HailData
+import com.aistra.hails.app.RecentApps
 import com.aistra.hails.app.UnfrozenStore
+import com.aistra.hails.utils.HPackages
 import com.aistra.hails.utils.HUI
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.color.MaterialColors
@@ -34,21 +35,22 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** 面板里一条应用记录，图标已预先解码成 Bitmap，避免滚动时反复加载 */
+/** 面板里一条应用记录，图标已预先解码成 Bitmap，避免反复加载 */
 private data class OverlayApp(
     val packageName: String,
     val label: String,
     val icon: Bitmap?,
-    val frozen: Boolean,
-    val pinned: Boolean
+    val frozen: Boolean
 )
 
 /**
  * 摇一摇后弹出的悬浮面板（纯 View 实现）。
  *
+ * 内容固定为「最近打开的 10 个应用」，网格多行排列：
+ * 点击冻结的应用 → 解冻并打开；点击未冻结的应用 → 直接冻结。
+ *
  * 这里刻意不用 Compose：Compose 在 WindowManager 里必须手动提供 ViewTreeLifecycleOwner，
  * 而本项目没有直接依赖 lifecycle-runtime，编译期拿不到这个类（CI 已因此失败过一次）。
- * 纯 View 只用到项目已有的 Material 组件，风险最低。
  */
 class ShakeOverlayPanel(
     context: Context,
@@ -57,8 +59,11 @@ class ShakeOverlayPanel(
     private val onDrag: (Float, Float) -> Unit
 ) : MaterialCardView(ContextThemeWrapper(context, R.style.Theme_Hail)) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val listContainer = LinearLayout(context)
+    private val gridContainer = LinearLayout(context)
     private var apps: List<OverlayApp> = emptyList()
+
+    /** 内容尺寸变化后通知宿主动手重新测量悬浮窗（窗口高度是 WRAP_CONTENT） */
+    var onLayoutChanged: (() -> Unit)? = null
 
     private val colorOnSurface by lazy { color(com.google.android.material.R.attr.colorOnSurface) }
     private val colorOnSurfaceVariant by lazy { color(com.google.android.material.R.attr.colorOnSurfaceVariant) }
@@ -70,7 +75,7 @@ class ShakeOverlayPanel(
         radius = dp(24).toFloat()
         cardElevation = dp(16).toFloat()
         setCardBackgroundColor(color(com.google.android.material.R.attr.colorSurface))
-        addView(buildContent(), FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(buildContent(), FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         reload()
     }
 
@@ -82,17 +87,13 @@ class ShakeOverlayPanel(
     // region 视图搭建
 
     private fun buildContent(): View {
-        listContainer.orientation = LinearLayout.VERTICAL
+        gridContainer.orientation = LinearLayout.VERTICAL
+        gridContainer.setPadding(dp(6), dp(8), dp(6), dp(4))
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             addView(buildHeader(), LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
             addView(buildDivider())
-            addView(
-                ScrollView(context).apply {
-                    addView(listContainer, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
-                },
-                LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f)
-            )
+            addView(gridContainer, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
             addView(buildDivider())
             addView(buildFooter(), LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         }
@@ -150,6 +151,37 @@ class ShakeOverlayPanel(
         setOnClickListener { onClick() }
     }
 
+    /** 网格里的一个应用格子：图标 + 单行名称 */
+    private fun buildCell(app: OverlayApp) = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        setPadding(dp(4), dp(6), dp(4), dp(6))
+        isClickable = true
+        setOnClickListener { onCellClick(app) }
+
+        addView(ImageView(context).apply {
+            val bitmap = app.icon
+            if (bitmap != null) {
+                setImageBitmap(bitmap)
+                // 冻结应用显示为灰度，与首页一致
+                if (app.frozen) colorFilter = grayscale
+            } else {
+                setImageResource(R.drawable.ic_round_frozen)
+                setColorFilter(colorOnSurfaceVariant)
+            }
+            layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
+        })
+        addView(TextView(context).apply {
+            text = app.label
+            textSize = 11f
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            gravity = Gravity.CENTER
+            setPadding(0, dp(4), 0, 0)
+            setTextColor(if (app.frozen) colorOnSurfaceVariant else colorOnSurface)
+        })
+    }
+
     // endregion
 
     // region 数据
@@ -162,84 +194,37 @@ class ShakeOverlayPanel(
     }
 
     private fun render() {
-        listContainer.removeAllViews()
+        gridContainer.removeAllViews()
         if (apps.isEmpty()) {
-            listContainer.addView(TextView(context).apply {
+            gridContainer.addView(TextView(context).apply {
                 text = context.getString(R.string.shake_overlay_empty)
                 textSize = 13f
                 gravity = Gravity.CENTER
                 setTextColor(colorOnSurfaceVariant)
-                setPadding(dp(24), dp(32), dp(24), dp(32))
+                setPadding(dp(20), dp(28), dp(20), dp(28))
             })
-            return
-        }
-        apps.forEach { app -> listContainer.addView(buildRow(app)) }
-    }
-
-    private fun buildRow(app: OverlayApp): View = LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(12), dp(6), dp(4), dp(6))
-        isClickable = true
-        setOnClickListener { launchApp(app) }
-
-        addView(ImageView(context).apply {
-            val bitmap = app.icon
-            if (bitmap != null) {
-                setImageBitmap(bitmap)
-                // 冻结应用显示为灰度，与首页一致
-                if (app.frozen) colorFilter = grayscale
-            } else {
-                setImageResource(R.drawable.ic_round_frozen)
-                setColorFilter(colorOnSurfaceVariant)
+        } else {
+            // 每行 [COLUMNS] 个，不足时用空格子补齐，保证列宽一致
+            apps.chunked(COLUMNS).forEach { rowApps ->
+                val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+                rowApps.forEach { app ->
+                    row.addView(buildCell(app), LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+                }
+                repeat(COLUMNS - rowApps.size) {
+                    row.addView(Space(context), LinearLayout.LayoutParams(0, 1, 1f))
+                }
+                gridContainer.addView(row, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
             }
-            layoutParams = LinearLayout.LayoutParams(dp(36), dp(36))
-        })
-
-        addView(LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), 0, dp(4), 0)
-            addView(TextView(context).apply {
-                text = app.label
-                textSize = 14f
-                maxLines = 1
-                ellipsize = TextUtils.TruncateAt.END
-                setTextColor(if (app.frozen) colorOnSurfaceVariant else colorOnSurface)
-            })
-            addView(TextView(context).apply {
-                text = context.getString(if (app.frozen) R.string.shake_state_frozen else R.string.shake_state_unfrozen)
-                textSize = 11f
-                setTextColor(if (app.frozen) colorPrimary else colorOnSurfaceVariant)
-            })
-            layoutParams = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
-        })
-
-        addView(textButton(
-            context.getString(if (app.frozen) R.string.action_unfreeze else R.string.action_freeze), 13f
-        ) { toggle(app) })
-    }
-
-    private fun toggle(app: OverlayApp) {
-        scope.launch {
-            val frozen = !app.frozen
-            val result = withContext(Dispatchers.IO) { AppManager.setAppFrozen(app.packageName, frozen) }
-            if (result) reload() else notifyFailure()
         }
+        // 内容高度变了，等这一帧布局完成再让宿主重新测量窗口
+        post { onLayoutChanged?.invoke() }
     }
 
-    private fun setAll(frozen: Boolean) {
-        scope.launch {
-            val targets = apps.filter { it.frozen != frozen }.map { it.packageName }
-            if (targets.isEmpty()) return@launch
-            val changed = withContext(Dispatchers.IO) {
-                targets.count { AppManager.setAppFrozen(it, frozen) }
-            }
-            if (changed == 0) notifyFailure() else reload()
-        }
-    }
-
-    /** 冻结的应用没有可用的启动 Intent，先解冻再启动，并记入首页「冻结」栏 */
-    private fun launchApp(app: OverlayApp) {
+    /**
+     * 点击语义：冻结 → 解冻并打开；未冻结 → 直接冻结（不打开）。
+     * 只有真正打开应用时才计入「最近打开」。
+     */
+    private fun onCellClick(app: OverlayApp) {
         scope.launch {
             if (app.frozen) {
                 val unfrozen = withContext(Dispatchers.IO) {
@@ -251,8 +236,23 @@ class ShakeOverlayPanel(
                     notifyFailure()
                     return@launch
                 }
+                RecentApps.add(app.packageName)
+                onOpenApp(app.packageName)
+            } else {
+                val frozen = withContext(Dispatchers.IO) { AppManager.setAppFrozen(app.packageName, true) }
+                if (frozen) reload() else notifyFailure()
             }
-            onOpenApp(app.packageName)
+        }
+    }
+
+    private fun setAll(frozen: Boolean) {
+        scope.launch {
+            val targets = apps.filter { it.frozen != frozen }.map { it.packageName }
+            if (targets.isEmpty()) return@launch
+            val changed = withContext(Dispatchers.IO) {
+                targets.count { AppManager.setAppFrozen(it, frozen) }
+            }
+            if (changed == 0) notifyFailure() else reload()
         }
     }
 
@@ -294,25 +294,27 @@ class ShakeOverlayPanel(
     }
 
     private companion object {
+        /** 网格列数，10 个应用正好排成三行 */
+        const val COLUMNS = 4
+
         /** 图标解码尺寸上限，过大只会浪费内存 */
         const val ICON_SIZE = 72
 
+        /** 按「最近打开」顺序读取，卸载或读不到的应用直接跳过 */
         fun loadApps(context: Context): List<OverlayApp> {
             val packageManager = context.packageManager
-            return HailData.checkedList.mapNotNull { info ->
-                if (info.packageName == BuildConfig.APPLICATION_ID) return@mapNotNull null
-                val applicationInfo = info.applicationInfo ?: return@mapNotNull null
+            return RecentApps.list().mapNotNull { packageName ->
+                val applicationInfo = HPackages.getApplicationInfoOrNull(packageName) ?: return@mapNotNull null
                 val icon = runCatching {
                     applicationInfo.loadIcon(packageManager).toBitmap(ICON_SIZE, ICON_SIZE)
                 }.getOrNull()
                 OverlayApp(
-                    packageName = info.packageName,
+                    packageName = packageName,
                     label = applicationInfo.loadLabel(packageManager).toString(),
                     icon = icon,
-                    frozen = AppManager.isAppFrozen(info.packageName),
-                    pinned = info.pinned
+                    frozen = AppManager.isAppFrozen(packageName)
                 )
-            }.sortedWith(compareByDescending<OverlayApp> { it.pinned }.thenBy { it.label })
+            }
         }
     }
 }

@@ -170,7 +170,7 @@
     <string name="shake_overlay_permission">Overlay permission is required to show the floating window</string>
     <string name="shake_overlay_no_sensor">Accelerometer not found, shake detection is unavailable</string>
     <string name="shake_overlay_start_failed">Unable to start the shake service, please enable it again in settings</string>
-    <string name="shake_overlay_empty">No apps on the home screen yet. Add apps in Hail first.</string>
+    <string name="shake_overlay_empty">No recent apps yet. Open an app from Hail first.</string>
     <string name="shake_state_frozen">Frozen</string>
     <string name="shake_state_unfrozen">Running</string>
     <string name="shake_open_app">Open Hail</string>

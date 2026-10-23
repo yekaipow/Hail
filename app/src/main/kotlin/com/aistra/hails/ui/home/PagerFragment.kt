@@ -38,6 +38,7 @@ import com.aistra.hails.app.AppManager
 import com.aistra.hails.app.HailApi
 import com.aistra.hails.app.HailApi.addTag
 import com.aistra.hails.app.HailData
+import com.aistra.hails.app.RecentApps
 import com.aistra.hails.app.UnfrozenStore
 import com.aistra.hails.databinding.DialogInputBinding
 import com.aistra.hails.databinding.FragmentPagerBinding
@@ -431,6 +432,7 @@ class PagerFragment : MainFragment(), PagerAdapter.OnItemClickListener, PagerAda
             HIsland.ensureLaunchIntentExists(packageName)
         }
         app.packageManager.getLaunchIntentForPackage(packageName)?.let {
+            RecentApps.add(packageName)
             HShortcuts.addDynamicShortcut(packageName)
             startActivity(it)
         } ?: HUI.showToast(R.string.activity_not_found)
