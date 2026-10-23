@@ -31,6 +31,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.aistra.hails.HailApp.Companion.app
 import com.aistra.hails.R
+import com.aistra.hails.app.AppBackup
 import com.aistra.hails.app.AppInfo
 import com.aistra.hails.app.AppManager
 import com.aistra.hails.app.HailApi
@@ -51,7 +52,6 @@ import com.google.android.material.tabs.TabLayout
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
 
 class PagerFragment : MainFragment(), PagerAdapter.OnItemClickListener, PagerAdapter.OnItemLongClickListener,
     MenuProvider {
@@ -506,10 +506,8 @@ class PagerFragment : MainFragment(), PagerAdapter.OnItemClickListener, PagerAda
 
     private fun exportToClipboard(list: List<AppInfo>) {
         if (list.isEmpty()) return
-        HUI.copyText(if (list.size > 1) JSONArray().run {
-            list.forEach { put(it.packageName) }
-            toString()
-        } else list[0].packageName)
+        // 连同分组、置顶、白名单一起导出
+        HUI.copyText(AppBackup.export(list))
         HUI.showToast(
             R.string.msg_exported, if (list.size > 1) list.size.toString() else list[0].name
         )
@@ -517,25 +515,14 @@ class PagerFragment : MainFragment(), PagerAdapter.OnItemClickListener, PagerAda
 
     private fun importFromClipboard() = runCatching {
         val str = HUI.pasteText() ?: throw IllegalArgumentException()
-        val json = if (str.contains('[')) JSONArray(
-            str.substring(
-                str.indexOf('[')..str.indexOf(']', str.indexOf('['))
-            )
-        )
-        else JSONArray().put(str)
-        var i = 0
-        for (index in 0 until json.length()) {
-            val pkg = json.getString(index)
-            if (HPackages.getApplicationInfoOrNull(pkg) != null && !HailData.isChecked(pkg)) {
-                HailData.addCheckedApp(pkg, tag?.second ?: 0, false)
-                i++
-            }
+        val tagCount = HailData.tags.size
+        val result = AppBackup.restore(str, tag?.second ?: 0)
+        // 导入可能带来新分组，通知首页页签同步刷新
+        if (HailData.tags.size > tagCount) {
+            adapter?.notifyItemRangeInserted(tagCount, HailData.tags.size - tagCount)
         }
-        if (i > 0) {
-            HailData.saveApps()
-            updateCurrentList()
-        }
-        HUI.showToast(getString(R.string.msg_imported, i.toString()))
+        if (result.changed > 0) updateCurrentList()
+        HUI.showToast(getString(R.string.msg_imported, result.changed.toString()))
     }
 
     private suspend fun importFrozenApp() = withContext(Dispatchers.IO) {
