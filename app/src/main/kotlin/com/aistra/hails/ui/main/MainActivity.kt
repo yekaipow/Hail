@@ -1,6 +1,7 @@
 package com.aistra.hails.ui.main
 
 import android.os.Bundle
+import android.provider.Settings
 import android.view.Menu
 import androidx.appcompat.app.AppCompatActivity
 import androidx.biometric.BiometricManager
@@ -36,8 +37,8 @@ class MainActivity : AppCompatActivity(), NavController.OnDestinationChangedList
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         val binding = initView()
-        // 服务被系统回收后，回到应用时顺手把摇一摇服务恢复起来
-        if (HailData.shakeToOpen) app.setShakeLaunchService(true)
+        // 服务被系统回收后，回到应用时顺手把摇一摇悬浮窗恢复起来
+        if (HailData.shakeOverlay && Settings.canDrawOverlays(this)) app.setShakeOverlayService(true)
         if (!HailData.biometricLogin || BiometricManager.from(this)
                 .canAuthenticate(BIOMETRIC_STRONG or DEVICE_CREDENTIAL) != BiometricManager.BIOMETRIC_SUCCESS
         ) return

@@ -13,6 +13,7 @@
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <uses-permission
             android:name="android.permission.PACKAGE_USAGE_STATS"
             tools:ignore="ProtectedPermissions"/>
@@ -139,10 +140,10 @@
             </intent-filter>
         </service>
         <service
-                android:name=".services.ShakeLaunchService"
+                android:name=".services.ShakeOverlayService"
                 android:exported="false"
                 android:foregroundServiceType="specialUse"
-                android:label="@string/shake_to_open">
+                android:label="@string/shake_overlay">
             <property
                     android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                     android:value="shake_overlay"/>

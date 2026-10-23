@@ -3,6 +3,7 @@ package com.aistra.hails.ui.settings
 import android.Manifest.permission.CHANGE_COMPONENT_ENABLED_STATE
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.view.*
@@ -79,7 +80,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
     @Composable
     private fun SettingsScreen() {
         val autoFreezeAfterLock = rememberPreferenceState(HailData.AUTO_FREEZE_AFTER_LOCK, false)
-        val shakeToOpen = rememberPreferenceState(HailData.SHAKE_TO_OPEN, false)
+        val shakeOverlay = rememberPreferenceState(HailData.SHAKE_OVERLAY, false)
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             listPreference(
                 key = HailData.WORKING_MODE,
@@ -239,17 +240,15 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 icon = Icons.Outlined.NotificationsActive
             )
             horizontalDivider()
-            preferenceCategory(key = "shake", title = { Text(text = stringResource(R.string.shake_to_open)) })
-            item(key = HailData.SHAKE_TO_OPEN, contentType = "SwitchPreference") {
+            preferenceCategory(key = "shake", title = { Text(text = stringResource(R.string.shake_overlay)) })
+            item(key = HailData.SHAKE_OVERLAY, contentType = "SwitchPreference") {
                 SwitchPreference(
-                    value = shakeToOpen.value,
+                    value = shakeOverlay.value,
                     onValueChange = { value ->
-                        shakeToOpen.value = value
-                        app.setShakeLaunchService(value)
-                        true
+                        if (onShakeOverlayChange(value)) shakeOverlay.value = value
                     },
-                    title = { Text(text = stringResource(R.string.shake_to_open_switch)) },
-                    summary = { Text(text = stringResource(R.string.shake_to_open_desc)) },
+                    title = { Text(text = stringResource(R.string.shake_overlay_switch)) },
+                    summary = { Text(text = stringResource(R.string.shake_overlay_desc)) },
                     icon = { Icon(imageVector = Icons.Outlined.Vibration, contentDescription = null) }
                 )
             }
@@ -259,7 +258,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 title = { Text(text = stringResource(R.string.shake_sensitivity)) },
                 valueRange = 0f..1f,
                 valueSteps = 3,
-                enabled = { shakeToOpen.value },
+                enabled = { shakeOverlay.value },
                 icon = { Icon(imageVector = Icons.Outlined.Speed, contentDescription = null) },
                 valueText = { Text(text = "${(it * 100).toInt()}%") }
             )
@@ -371,6 +370,24 @@ class SettingsFragment : MainFragment(), MenuProvider {
 
     private fun String.toEntry(values: List<String>, @ArrayRes entriesId: Int): String =
         resources.getStringArray(entriesId)[values.indexOf(this)]
+
+    /** @return 是否允许切换开关；未授予悬浮窗权限时先引导授权，并让开关回弹 */
+    private fun onShakeOverlayChange(enabled: Boolean): Boolean {
+        if (enabled && !Settings.canDrawOverlays(requireContext())) {
+            HUI.showToast(R.string.shake_overlay_permission)
+            runCatching {
+                startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:${requireContext().packageName}")
+                    )
+                )
+            }
+            return false
+        }
+        app.setShakeOverlayService(enabled)
+        return true
+    }
 
     private fun resetDynamicShortcuts() {
         HShortcuts.removeAllDynamicShortcuts()

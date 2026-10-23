@@ -160,12 +160,13 @@
     <string name="state_uninstalled">已卸载</string>
     <string name="donate_kofi">Ko-fi</string>
     <string name="mode_jailbreak_disable">越狱 - 停用</string>
-    <string name="shake_to_open">摇一摇打开</string>
-    <string name="shake_to_open_switch">启用摇一摇</string>
-    <string name="shake_to_open_desc">亮屏时摇晃手机，以小窗方式打开 Hail</string>
+    <string name="shake_overlay">摇一摇悬浮窗</string>
+    <string name="shake_overlay_switch">启用摇一摇</string>
+    <string name="shake_overlay_desc">亮屏时摇晃手机，以悬浮窗显示「冻结」列表</string>
     <string name="shake_sensitivity">摇晃灵敏度</string>
-    <string name="shake_notification_desc">亮屏时摇晃手机即可打开小窗</string>
+    <string name="shake_overlay_notification_desc">亮屏时摇晃手机即可弹出悬浮窗</string>
+    <string name="shake_overlay_permission">需要授予「显示在其他应用的上层」权限才能显示悬浮窗</string>
     <string name="shake_no_sensor">未找到加速度传感器，无法使用摇一摇</string>
     <string name="shake_start_failed">摇一摇服务启动失败，请回到设置重新开启</string>
-    <string name="shake_no_freeform">当前系统不支持小窗，已全屏打开</string>
+    <string name="shake_overlay_empty">这里还没有待处理的应用</string>
 </resources>

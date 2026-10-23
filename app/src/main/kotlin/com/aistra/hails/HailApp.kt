@@ -12,7 +12,7 @@ import androidx.core.content.getSystemService
 import com.aistra.hails.app.AppManager
 import com.aistra.hails.app.HailData
 import com.aistra.hails.services.AutoFreezeService
-import com.aistra.hails.services.ShakeLaunchService
+import com.aistra.hails.services.ShakeOverlayService
 import com.aistra.hails.utils.HDhizuku
 import com.aistra.hails.utils.HTarget
 import com.aistra.hails.utils.HUI
@@ -48,8 +48,8 @@ class HailApp : Application() {
         )
     }
 
-    fun setShakeLaunchService(enabled: Boolean = HailData.shakeToOpen, context: Context = app) {
-        val intent = Intent(app, ShakeLaunchService::class.java)
+    fun setShakeOverlayService(enabled: Boolean = HailData.shakeOverlay, context: Context = app) {
+        val intent = Intent(app, ShakeOverlayService::class.java)
         if (!enabled) {
             context.stopService(intent)
             return
