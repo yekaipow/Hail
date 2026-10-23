@@ -3,6 +3,7 @@ package com.aistra.hails.ui.overlay
 import android.content.Context
 import android.graphics.PixelFormat
 import android.provider.Settings
+import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
 import com.aistra.hails.R
@@ -17,6 +18,7 @@ import kotlin.math.min
 class FrozenOverlayHost(private val context: Context) {
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var view: FrozenOverlayPanel? = null
+    private val TAG = "FrozenOverlayHost"
     private var lastX = Int.MIN_VALUE
     private var lastY = Int.MIN_VALUE
 
@@ -28,23 +30,24 @@ class FrozenOverlayHost(private val context: Context) {
             HUI.showToast(R.string.shake_overlay_permission)
             return false
         }
-        val params = createLayoutParams()
-        val panel = FrozenOverlayPanel(
-            context,
-            onClose = { hide() },
-            onDrag = { dx, dy -> moveBy(dx, dy) }
-        )
-        // 列表行数变化时窗口高度跟着变
-        panel.onSizeChanged = {
-            runCatching { windowManager.updateViewLayout(panel, params) }
-        }
         return try {
+            val params = createLayoutParams()
+            val panel = FrozenOverlayPanel(
+                context,
+                onClose = { hide() },
+                onDrag = { dx, dy -> moveBy(dx, dy) }
+            )
+            // 列表行数变化时窗口高度跟着变
+            panel.onSizeChanged = {
+                runCatching { windowManager.updateViewLayout(panel, params) }
+            }
             windowManager.addView(panel, params)
             view = panel
             true
-        } catch (e: Exception) {
-            // 权限被回收或窗口被系统拒绝时不要把服务搞崩
-            HUI.showToast(R.string.shake_overlay_permission)
+        } catch (e: Throwable) {
+            // 任何创建/添加窗口的异常都不要让服务崩溃：记日志 + 提示异常类型，便于定位
+            Log.e(TAG, "show overlay failed", e)
+            HUI.showToast(R.string.shake_overlay_error, e.javaClass.simpleName)
             false
         }
     }

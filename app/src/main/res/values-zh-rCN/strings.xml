@@ -169,4 +169,5 @@
     <string name="shake_no_sensor">未找到加速度传感器，无法使用摇一摇</string>
     <string name="shake_start_failed">摇一摇服务启动失败，请回到设置重新开启</string>
     <string name="shake_overlay_empty">这里还没有待处理的应用</string>
+    <string name="shake_overlay_error">悬浮窗打开失败：%s</string>
 </resources>

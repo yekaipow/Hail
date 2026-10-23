@@ -3,6 +3,8 @@ package com.aistra.hails.ui.overlay
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -12,6 +14,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.view.ContextThemeWrapper
+import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -23,8 +26,6 @@ import com.aistra.hails.app.UnfrozenStore
 import com.aistra.hails.ui.home.FrozenBarAdapter
 import com.aistra.hails.utils.HUI
 import com.aistra.hails.utils.NameComparator
-import com.google.android.material.card.MaterialCardView
-import com.google.android.material.color.MaterialColors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,14 +37,17 @@ import kotlinx.coroutines.withContext
  * 摇一摇弹出的悬浮窗，内容就是首页底部那块「冻结」区（fragment_home.xml 里的 frozen_list）：
  * 标题是待处理应用数量，下面是同一套 FrozenBarAdapter 网格，点击/长按行为与首页保持一致。
  *
- * 这里刻意不用 Compose：Compose 在 WindowManager 里必须手动提供 ViewTreeLifecycleOwner，
- * 而本项目没有直接依赖 lifecycle-runtime，编译期拿不到这个类。
+ * 说明：
+ * - 根布局用 FrameLayout + 自绘圆角背景，而不是 MaterialCardView。悬浮窗运行在 Service 上下文里，
+ *   Material 组件会读取大量主题属性，一旦宿主主题不完整就会在构造期直接抛异常（表现为摇晃闪退）。
+ * - 也不用 Compose：Compose 在 WindowManager 里必须手动提供 ViewTreeLifecycleOwner，
+ *   而项目没有直接依赖 lifecycle-runtime。
  */
 class FrozenOverlayPanel(
     context: Context,
     private val onClose: () -> Unit,
     private val onDrag: (Float, Float) -> Unit
-) : MaterialCardView(ContextThemeWrapper(context, R.style.Theme_Hail)) {
+) : FrameLayout(ContextThemeWrapper(context, R.style.Theme_Hail)) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val titleView = TextView(context)
     private val emptyView = TextView(context)
@@ -54,15 +58,19 @@ class FrozenOverlayPanel(
     /** 内容高度变化后通知宿主重新测量窗口（窗口高度是 WRAP_CONTENT） */
     var onSizeChanged: (() -> Unit)? = null
 
-    private val colorOnSurface by lazy { color(com.google.android.material.R.attr.colorOnSurface) }
-    private val colorOnSurfaceVariant by lazy { color(com.google.android.material.R.attr.colorOnSurfaceVariant) }
-    // colorPrimary 是 AppCompat 定义的属性，Material 的 R 里没有
-    private val colorPrimary by lazy { color(androidx.appcompat.R.attr.colorPrimary) }
+    private val colorBackground by lazy { themeColor(android.R.attr.colorBackground, Color.WHITE) }
+    private val colorTextPrimary by lazy {
+        themeColor(android.R.attr.textColorPrimary, Color.BLACK)
+    }
+    private val colorPrimary by lazy { themeColor(androidx.appcompat.R.attr.colorPrimary, Color.GRAY) }
 
     init {
-        radius = dp(24).toFloat()
-        cardElevation = dp(16).toFloat()
-        setCardBackgroundColor(color(com.google.android.material.R.attr.colorSurface))
+        // 圆角背景 + 一点点内边距，替代 MaterialCardView
+        background = GradientDrawable().apply {
+            cornerRadius = dp(24).toFloat()
+            setColor(colorBackground)
+        }
+        elevation = dp(16).toFloat()
         addView(buildContent(), FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         refresh()
     }
@@ -80,11 +88,13 @@ class FrozenOverlayPanel(
         addView(buildHeader(), LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         addView(listView, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0))
         addView(emptyView, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+
         emptyView.apply {
             text = context.getString(R.string.shake_overlay_empty)
             textSize = 13f
             gravity = Gravity.CENTER
-            setTextColor(colorOnSurfaceVariant)
+            setTextColor(colorTextPrimary)
+            alpha = 0.7f
             setPadding(dp(16), dp(20), dp(16), dp(20))
             isVisible = false
         }
@@ -111,7 +121,8 @@ class FrozenOverlayPanel(
         addView(TextView(context).apply {
             text = "✕"
             textSize = 16f
-            setTextColor(colorPrimary)
+            setTextColor(colorTextPrimary)
+            alpha = 0.7f
             gravity = Gravity.CENTER
             setPadding(dp(12), dp(8), dp(12), dp(8))
             setOnClickListener { onClose() }
@@ -124,7 +135,7 @@ class FrozenOverlayPanel(
 
     private fun refresh() {
         scope.launch {
-            val list = withContext(Dispatchers.IO) { loadList() }
+            val list = withContext(Dispatchers.IO) { runCatching { loadList() }.getOrDefault(emptyList()) }
             adapter.submitList(list)
             val visible = list.isNotEmpty()
             titleView.text = if (visible) {
@@ -159,12 +170,14 @@ class FrozenOverlayPanel(
      */
     private fun onItemClick(info: AppInfo) {
         scope.launch {
-            val frozen = withContext(Dispatchers.IO) { AppManager.isAppFrozen(info.packageName) }
+            val frozen = withContext(Dispatchers.IO) { runCatching { AppManager.isAppFrozen(info.packageName) }.getOrDefault(false) }
             if (frozen) {
                 val unfrozen = withContext(Dispatchers.IO) {
-                    AppManager.setAppFrozen(info.packageName, false).also {
-                        if (it) UnfrozenStore.add(info.packageName)
-                    }
+                    runCatching {
+                        AppManager.setAppFrozen(info.packageName, false).also {
+                            if (it) UnfrozenStore.add(info.packageName)
+                        }
+                    }.getOrDefault(false)
                 }
                 if (unfrozen) launchApp(info.packageName) else HUI.showToast(R.string.permission_denied)
             } else {
@@ -173,7 +186,9 @@ class FrozenOverlayPanel(
                     return@launch
                 }
                 // 冻结成功后：未锁定的由 AppManager 移出列表，锁定的保留
-                val frozenNow = withContext(Dispatchers.IO) { AppManager.setAppFrozen(info.packageName, true) }
+                val frozenNow = withContext(Dispatchers.IO) {
+                    runCatching { AppManager.setAppFrozen(info.packageName, true) }.getOrDefault(false)
+                }
                 if (frozenNow) HUI.showToast(R.string.msg_freeze, info.name)
                 else HUI.showToast(R.string.permission_denied)
             }
@@ -202,7 +217,12 @@ class FrozenOverlayPanel(
 
     // endregion
 
-    private fun color(attrRes: Int): Int = MaterialColors.getColor(this, attrRes, Color.BLACK)
+    /** 从主题里取颜色，取不到就用兜底色，避免任何主题缺失导致崩溃 */
+    private fun themeColor(attrRes: Int, fallback: Int): Int = runCatching {
+        val value = TypedValue()
+        if (!context.theme.resolveAttribute(attrRes, value, true)) return@runCatching fallback
+        if (value.resourceId != 0) ContextCompat.getColor(context, value.resourceId) else value.data
+    }.getOrDefault(fallback)
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
