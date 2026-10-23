@@ -18,38 +18,43 @@ import androidx.core.content.getSystemService
 import com.aistra.hails.R
 import com.aistra.hails.app.HailData
 import com.aistra.hails.ui.main.MainActivity
-import com.aistra.hails.ui.overlay.ShakeOverlayHost
+import com.aistra.hails.utils.HFloatingWindow
 import com.aistra.hails.utils.HTarget
 import com.aistra.hails.utils.HUI
 import com.aistra.hails.utils.ShakeDetector
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
- * 摇一摇悬浮窗的常驻前台服务。
+ * 摇一摇常驻前台服务。
  *
- * 只在「亮屏」期间注册传感器，灭屏立即注销，把耗电控制在可接受范围；
- * 摇晃命中后弹出 [ShakeOverlayHost]，内容为首页应用列表的紧凑面板。
+ * 只在「亮屏」期间注册传感器，灭屏立即注销以省电；摇晃命中后用小窗方式打开 Hail 主界面
+ * （见 [HFloatingWindow]，不支持自由窗口的设备退化为全屏）。
  */
-class ShakeOverlayService : Service() {
+class ShakeLaunchService : Service() {
     private val channelId = javaClass.simpleName
-    private lateinit var overlay: ShakeOverlayHost
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var detector: ShakeDetector? = null
     private var sensorWarningShown = false
+
+    /** 防止一次摇晃触发多次启动 */
+    private var launching = false
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
                 Intent.ACTION_SCREEN_ON -> startListening()
-                Intent.ACTION_SCREEN_OFF -> {
-                    stopListening()
-                    overlay.hide()
-                }
+                Intent.ACTION_SCREEN_OFF -> stopListening()
             }
         }
     }
 
     override fun onCreate() {
         super.onCreate()
-        overlay = ShakeOverlayHost(this)
         detector = ShakeDetector(this, sensitivity = { HailData.shakeSensitivity }) { onShake() }
         ContextCompat.registerReceiver(
             this,
@@ -71,7 +76,7 @@ class ShakeOverlayService : Service() {
             buildNotification(),
             if (HTarget.U) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
         )
-        // 从设置页重启服务时屏幕可能已经亮着
+        // 从设置页启动时屏幕可能已经亮着
         if (isInteractive()) startListening()
         return START_STICKY
     }
@@ -81,7 +86,7 @@ class ShakeOverlayService : Service() {
     override fun onDestroy() {
         stopListening()
         runCatching { unregisterReceiver(screenReceiver) }
-        overlay.release()
+        scope.cancel()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
@@ -92,7 +97,7 @@ class ShakeOverlayService : Service() {
         val shakeDetector = detector ?: return
         if (!shakeDetector.isSupported && !sensorWarningShown) {
             sensorWarningShown = true
-            HUI.showToast(R.string.shake_overlay_no_sensor)
+            HUI.showToast(R.string.shake_no_sensor)
             return
         }
         shakeDetector.start()
@@ -103,13 +108,20 @@ class ShakeOverlayService : Service() {
     }
 
     private fun onShake() {
-        if (!isInteractive()) return
-        overlay.show()
+        if (!isInteractive() || launching) return
+        launching = true
+        scope.launch {
+            val floating = HFloatingWindow.launch(this@ShakeLaunchService)
+            if (!floating) HUI.showToast(R.string.shake_no_freeform)
+            // 与传感器的冷却时间配合，避免一次摇晃重复拉起窗口
+            delay(1500)
+            launching = false
+        }
     }
 
     private fun buildNotification() = NotificationCompat.Builder(this, channelId)
-        .setContentTitle(getString(R.string.shake_overlay))
-        .setContentText(getString(R.string.shake_overlay_notification_desc))
+        .setContentTitle(getString(R.string.shake_to_open))
+        .setContentText(getString(R.string.shake_notification_desc))
         .setSmallIcon(R.drawable.ic_round_frozen)
         .setCategory(NotificationCompat.CATEGORY_SERVICE)
         .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -126,7 +138,7 @@ class ShakeOverlayService : Service() {
 
     private fun createNotificationChannel() {
         val channel = NotificationChannelCompat.Builder(channelId, NotificationManagerCompat.IMPORTANCE_LOW)
-            .setName(getString(R.string.shake_overlay))
+            .setName(getString(R.string.shake_to_open))
             .build()
         NotificationManagerCompat.from(this).createNotificationChannel(channel)
     }

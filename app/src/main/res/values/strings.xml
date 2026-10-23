@@ -162,17 +162,12 @@
     <string name="state_suspended">Suspended</string>
     <string name="state_uninstalled">Uninstalled</string>
     <string name="mode_jailbreak_disable">Jailbreak - Disable</string>
-    <string name="shake_overlay">Shake to open</string>
-    <string name="shake_overlay_switch">Enable shake gesture</string>
-    <string name="shake_overlay_desc">While the screen is on, shake the phone to open Hail in a floating window</string>
+    <string name="shake_to_open">Shake to open</string>
+    <string name="shake_to_open_switch">Enable shake gesture</string>
+    <string name="shake_to_open_desc">While the screen is on, shake the phone to open Hail in a floating window</string>
     <string name="shake_sensitivity">Shake sensitivity</string>
-    <string name="shake_overlay_notification_desc">Screen on, shake the phone to open the floating window</string>
-    <string name="shake_overlay_permission">Overlay permission is required to show the floating window</string>
-    <string name="shake_overlay_no_sensor">Accelerometer not found, shake detection is unavailable</string>
-    <string name="shake_overlay_start_failed">Unable to start the shake service, please enable it again in settings</string>
-    <string name="shake_overlay_empty">No apps on the home screen yet. Add apps in Hail first.</string>
-    <string name="shake_state_frozen">Frozen</string>
-    <string name="shake_state_unfrozen">Running</string>
-    <string name="shake_open_app">Open Hail</string>
-    <string name="shake_close">Close</string>
+    <string name="shake_notification_desc">Screen on, shake the phone to open the floating window</string>
+    <string name="shake_no_sensor">Accelerometer not found, shake detection is unavailable</string>
+    <string name="shake_start_failed">Unable to start the shake service, please enable it again in settings</string>
+    <string name="shake_no_freeform">This device does not support floating windows, opened in fullscreen</string>
 </resources>
