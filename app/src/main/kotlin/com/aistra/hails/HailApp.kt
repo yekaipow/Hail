@@ -12,8 +12,10 @@ import androidx.core.content.getSystemService
 import com.aistra.hails.app.AppManager
 import com.aistra.hails.app.HailData
 import com.aistra.hails.services.AutoFreezeService
+import com.aistra.hails.services.ShakeOverlayService
 import com.aistra.hails.utils.HDhizuku
 import com.aistra.hails.utils.HTarget
+import com.aistra.hails.utils.HUI
 
 class HailApp : Application() {
     override fun onCreate() {
@@ -44,6 +46,17 @@ class HailApp : Application() {
             if (enabled) PackageManager.COMPONENT_ENABLED_STATE_ENABLED else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
             PackageManager.DONT_KILL_APP
         )
+    }
+
+    fun setShakeOverlayService(enabled: Boolean = HailData.shakeOverlay, context: Context = app) {
+        val intent = Intent(app, ShakeOverlayService::class.java)
+        if (!enabled) {
+            context.stopService(intent)
+            return
+        }
+        // 后台启动前台服务可能被系统拒绝（Android 12+），失败时提示而不是崩溃
+        runCatching { ContextCompat.startForegroundService(context, intent) }
+            .onFailure { HUI.showToast(R.string.shake_overlay_start_failed) }
     }
 
     fun setAppTheme(theme: String) {

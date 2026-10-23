@@ -123,6 +123,8 @@ object HailData {
     const val SKIP_WHILE_CHARGING = "skip_while_charging"
     const val SKIP_FOREGROUND_APP = "skip_foreground_app"
     const val SKIP_NOTIFYING_APP = "skip_notifying_app"
+    const val SHAKE_OVERLAY = "shake_overlay"
+    const val SHAKE_SENSITIVITY = "shake_sensitivity_f"
     const val DYNAMIC_SHORTCUT_ACTION = "dynamic_shortcut_action"
     val DYNAMIC_SHORTCUT_ACTIONS = listOf(
         ACTION_NONE,
@@ -157,6 +159,12 @@ object HailData {
     val skipWhileCharging get() = sp.getBoolean(SKIP_WHILE_CHARGING, false)
     val skipForegroundApp get() = sp.getBoolean(SKIP_FOREGROUND_APP, false)
     val skipNotifyingApp get() = sp.getBoolean(SKIP_NOTIFYING_APP, false)
+    var shakeOverlay
+        get() = sp.getBoolean(SHAKE_OVERLAY, false)
+        set(value) = sp.edit { putBoolean(SHAKE_OVERLAY, value) }
+
+    /** 摇一摇灵敏度，0（需用力摇）.. 1（轻摇即触发），默认 0.5 */
+    val shakeSensitivity get() = sp.getFloat(SHAKE_SENSITIVITY, 0.5f)
     val dynamicShortcutAction get() = sp.getString(DYNAMIC_SHORTCUT_ACTION, ACTION_NONE)!!
 
     private val dir = "${app.filesDir.path}/v1"
