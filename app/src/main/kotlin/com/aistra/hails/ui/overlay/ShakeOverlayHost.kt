@@ -6,8 +6,6 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.ViewGroup.LayoutParams
@@ -16,8 +14,6 @@ import com.aistra.hails.R
 import com.aistra.hails.app.HailData
 import com.aistra.hails.ui.main.MainActivity
 import com.aistra.hails.utils.HIsland
-import com.aistra.hails.utils.HShell
-import com.aistra.hails.utils.HShizuku
 import com.aistra.hails.utils.HTarget
 import com.aistra.hails.utils.HUI
 import kotlin.math.min
@@ -144,53 +140,45 @@ class ShakeOverlayHost(private val context: Context) {
     /**
      * 以自由窗口（Freeform）打开。
      *
-     * setLaunchWindowingMode 是 @hide API：Android 9+ 反射会被 hidden API 限制拦截，
-     * 因此优先走 Shizuku / root 的 shell —— `am start --windowingMode 5`（Android 9+ 支持），
-     * 不受 hidden API 限制。无特权时退回反射尝试，仍失败则全屏启动并提示。
+     * 两个必要条件：
+     * 1. Intent 加 FLAG_ACTIVITY_MULTIPLE_TASK——否则目标应用已有的全屏 task 会被复用，
+     *    窗口模式参数被忽略（表现为"小窗没生效"）。
+     * 2. 反射调用 setLaunchWindowingMode(5) 指定窗口模式（@hide API，部分 ROM 会拦截）。
      *
-     * 另外最终能否小窗还取决于系统是否支持自由窗口
-     * （开发者选项「强制允许自由窗口」或 ROM 自带），不支持时系统会静默回退全屏。
+     * 反射失败或设备不支持自由窗口时回退全屏启动。
      */
     private fun startActivityFreeform(intent: Intent) {
-        val component = intent.component?.flattenToShortString()
-        val shellPath = component != null && (
-            HailData.workingMode.startsWith(HailData.SHIZUKU) ||
-                HailData.workingMode.startsWith(HailData.SU)
-            )
-        if (shellPath && component != null) {
-            val command = "am start --user current --windowingMode 5 -n $component"
-            val shizuku = HailData.workingMode.startsWith(HailData.SHIZUKU)
-            Thread {
-                val result = if (shizuku) HShizuku.execute(command) else HShell.execute(command, true)
-                // 老系统不认识 --windowingMode 参数会导致启动失败，回退普通全屏启动
-                if (result.first != 0) runOnMain { context.startActivity(intent) }
-            }.start()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            context.startActivity(intent)
             return
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            try {
-                val options = ActivityOptions.makeBasic()
-                ActivityOptions::class.java
-                    .getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType)
-                    .invoke(options, WINDOWING_MODE_FREEFORM)
+        try {
+            /*
+             * 关键：必须加 MULTIPLE_TASK。
+             * 目标应用通常已经有一个全屏 task，只加 NEW_TASK 会把它调到前台复用，
+             * 窗口模式参数被忽略，表现就是"小窗没生效"。MULTIPLE_TASK 强制新建 task，
+             * setLaunchWindowingMode 才会作用在新窗口上。
+             */
+            intent.addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+            val options = ActivityOptions.makeBasic()
+            // setLaunchWindowingMode 是 @hide API，反射调用；部分 ROM 会拦截，失败则回退全屏
+            ActivityOptions::class.java
+                .getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType)
+                .invoke(options, WINDOWING_MODE_FREEFORM)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val metrics = context.resources.displayMetrics
                 val width = metrics.widthPixels * 3 / 5
                 val height = metrics.heightPixels * 3 / 5
                 val left = (metrics.widthPixels - width) / 2
                 val top = (metrics.heightPixels - height) / 4
                 options.setLaunchBounds(Rect(left, top, left + width, top + height))
-                context.startActivity(intent, options.toBundle())
-                return
-            } catch (e: Exception) {
-                // hidden API 被系统拦截等，走下方兜底
             }
+            context.startActivity(intent, options.toBundle())
+        } catch (e: Exception) {
+            // 反射被拦截或窗口模式不被支持：回退普通全屏启动
+            context.startActivity(intent)
+            HUI.showToast(R.string.shake_freeform_unavailable)
         }
-        context.startActivity(intent)
-        HUI.showToast(R.string.shake_freeform_unavailable)
-    }
-
-    private inline fun runOnMain(crossinline block: () -> Unit) {
-        Handler(Looper.getMainLooper()).post { block() }
     }
 
     private companion object {
