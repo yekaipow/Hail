@@ -9,6 +9,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.view.isVisible
+import androidx.lifecycle.lifecycleScope
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.GridLayoutManager
 import com.aistra.hails.HailApp.Companion.app
@@ -27,6 +28,9 @@ import com.aistra.hails.ui.main.MainFragment
 import com.aistra.hails.utils.HUI
 import com.aistra.hails.utils.NameComparator
 import kotlin.math.abs
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.tabs.TabLayoutMediator
 
@@ -116,7 +120,8 @@ class HomeFragment : MainFragment() {
             updateFrozenTitle(binding, list.size)
             if (visible) applyFrozenListHeight(list.size)
             binding.frozenBar.isVisible = visible
-            frozenAdapter.submitList(list)
+            // 提交后强制重绑：state 是实时 getter，DiffUtil 判断不出冻结状态变化
+            frozenAdapter.submitList(list) { frozenAdapter.refresh() }
         } finally {
             updatingBar = false
         }
@@ -199,33 +204,38 @@ class HomeFragment : MainFragment() {
     }
 
     /**
-     * 点击：未冻结的直接冻结；已冻结的（锁定项）解冻并启动。
+     * 点击：已冻结的（锁定项）解冻并启动；未冻结的直接冻结。
+     * 与悬浮窗一致：冻结/解冻的阻塞调用放在 IO 线程，成功后主动刷新列表。
      */
     private fun onFrozenItemClick(info: AppInfo) {
-        if (AppManager.isAppFrozen(info.packageName)) {
-            if (AppManager.setAppFrozen(info.packageName, false)) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val frozen = withContext(Dispatchers.IO) { AppManager.isAppFrozen(info.packageName) }
+            if (frozen) {
+                val unfrozen = withContext(Dispatchers.IO) { AppManager.setAppFrozen(info.packageName, false) }
+                if (!unfrozen) {
+                    HUI.showToast(R.string.permission_denied)
+                    return@launch
+                }
                 UnfrozenStore.add(info.packageName)
+                updateFrozenBar()
                 app.packageManager.getLaunchIntentForPackage(info.packageName)?.let {
                     startActivity(it)
                 } ?: HUI.showToast(R.string.activity_not_found)
+                return@launch
+            }
+            if (HailData.workingMode == HailData.MODE_DEFAULT) {
+                MaterialAlertDialogBuilder(requireContext()).setMessage(R.string.msg_guide)
+                    .setPositiveButton(android.R.string.ok, null).show()
+                return@launch
+            }
+            // 冻结成功后：未锁定的由 AppManager 移出列表，锁定的保留
+            val ok = withContext(Dispatchers.IO) { AppManager.setAppFrozen(info.packageName, true) }
+            if (ok) {
+                HUI.showToast(R.string.msg_freeze, info.name)
+                updateFrozenBar()
             } else {
                 HUI.showToast(R.string.permission_denied)
             }
-            return
-        }
-        if (HailData.workingMode == HailData.MODE_DEFAULT) {
-            MaterialAlertDialogBuilder(requireContext()).setMessage(R.string.msg_guide)
-                .setPositiveButton(android.R.string.ok, null).show()
-            return
-        }
-        // 冻结成功后：未锁定的由 AppManager 移出列表，锁定的保留
-        if (AppManager.setAppFrozen(info.packageName, true)) {
-            HUI.showToast(R.string.msg_freeze, info.name)
-            // 锁定项不会被 UnfrozenStore 移除，SP 无变化不会触发自动刷新，
-            // 这里主动刷新让图标立刻变灰（未锁定项则被移出列表）
-            updateFrozenBar()
-        } else {
-            HUI.showToast(R.string.permission_denied)
         }
     }
 

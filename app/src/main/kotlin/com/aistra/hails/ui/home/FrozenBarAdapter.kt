@@ -57,6 +57,14 @@ class FrozenBarAdapter(
         }
     }
 
+    /**
+     * 强制全量重绑。
+     * DiffUtil 的 areContentsTheSame 比较的是实时 getter（AppInfo.state），
+     * 新旧对象同一时刻查询结果恒等，冻结完成后会被判定"内容未变"而不重绑，
+     * 导致图标停在旧颜色。这里显式重绑，保证按最新状态渲染。
+     */
+    fun refresh() = notifyDataSetChanged()
+
     fun onDestroy() {
         if (loadIconJob?.isActive == true) loadIconJob?.cancel()
     }
