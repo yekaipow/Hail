@@ -62,8 +62,9 @@ class ShakeOverlayPanel(
 
     private val colorOnSurface by lazy { color(com.google.android.material.R.attr.colorOnSurface) }
     private val colorOnSurfaceVariant by lazy { color(com.google.android.material.R.attr.colorOnSurfaceVariant) }
-    private val colorPrimary by lazy { color(com.google.android.material.R.attr.colorPrimary) }
-    private val grayscale by lazy { ColorMatrixColorFilter(ColorMatrix().apply { setToSaturation(0f) }) }
+    // colorPrimary 是 AppCompat 定义的属性，Material 的 R 里没有
+    private val colorPrimary by lazy { color(androidx.appcompat.R.attr.colorPrimary) }
+    private val grayscale by lazy { ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) }) }
 
     init {
         radius = dp(24).toFloat()
