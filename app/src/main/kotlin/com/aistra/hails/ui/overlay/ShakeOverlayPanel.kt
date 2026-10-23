@@ -144,41 +144,24 @@ class ShakeOverlayPanel(
     }
 
     private fun buildFooter(): View = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        // 第一行：批量操作 + 锁屏
-        addView(LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            addView(
-                textButton(context.getString(R.string.action_freeze_all), 13f) { setAll(true) },
-                LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
-            )
-            addView(
-                textButton(context.getString(R.string.action_unfreeze_all), 13f) { setAll(false) },
-                LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
-            )
-            addView(
-                textButton(context.getString(R.string.shake_lock_screen), 13f) { lockScreen() },
-                LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
-            )
-        }, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(FOOTER_DP)))
-        // 第二行：两个点击行为开关
-        addView(LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            freezeModeButton = textButton(context.getString(R.string.shake_freeze_mode), 13f) {
-                freezeMode = !freezeMode
-                styleModeButton(freezeModeButton, freezeMode)
-            }
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        addView(
+            textButton(context.getString(R.string.shake_lock_screen), 13f) { lockScreen() },
+            LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
+        )
+        freezeModeButton = textButton(context.getString(R.string.shake_freeze_mode), 13f) {
+            freezeMode = !freezeMode
             styleModeButton(freezeModeButton, freezeMode)
-            addView(freezeModeButton, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-            freeformModeButton = textButton(context.getString(R.string.shake_freeform_mode), 13f) {
-                freeformMode = !freeformMode
-                styleModeButton(freeformModeButton, freeformMode)
-            }
+        }
+        styleModeButton(freezeModeButton, freezeMode)
+        addView(freezeModeButton, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        freeformModeButton = textButton(context.getString(R.string.shake_freeform_mode), 13f) {
+            freeformMode = !freeformMode
             styleModeButton(freeformModeButton, freeformMode)
-            addView(freeformModeButton, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-        }, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(FOOTER_DP)))
+        }
+        styleModeButton(freeformModeButton, freeformMode)
+        addView(freeformModeButton, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
     }
 
     /**
@@ -307,7 +290,7 @@ class ShakeOverlayPanel(
         val gridHeight = if (rows.isEmpty()) dp(EMPTY_HEIGHT_DP) else rows.size * dp(CELL_SIZE_DP)
         (gridContainer.layoutParams as LinearLayout.LayoutParams).height = gridHeight
         gridContainer.requestLayout()
-        val totalHeight = dp(HEADER_DP) + dp(FOOTER_DP) * 2 + gridHeight + 2 // + 两条 1px 分隔线
+        val totalHeight = dp(HEADER_DP) + dp(FOOTER_DP) + gridHeight + 2 // + 两条 1px 分隔线
         post { onContentHeightChanged?.invoke(totalHeight) }
     }
 
@@ -351,17 +334,6 @@ class ShakeOverlayPanel(
         UnfrozenStore.setLocked(app.packageName, !locked)
         HUI.showToast(if (locked) R.string.msg_unlocked else R.string.msg_locked, app.label)
         reload()
-    }
-
-    private fun setAll(frozen: Boolean) {
-        scope.launch {
-            val targets = apps.filter { it.frozen != frozen }.map { it.packageName }
-            if (targets.isEmpty()) return@launch
-            val changed = withContext(Dispatchers.IO) {
-                targets.count { AppManager.setAppFrozen(it, frozen) }
-            }
-            if (changed == 0) notifyFailure() else reload()
-        }
     }
 
     /**
