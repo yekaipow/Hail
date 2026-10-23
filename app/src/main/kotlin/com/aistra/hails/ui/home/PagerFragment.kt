@@ -29,6 +29,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.widget.ViewPager2
 import com.aistra.hails.HailApp.Companion.app
 import com.aistra.hails.R
 import com.aistra.hails.app.AppBackup
@@ -66,6 +67,7 @@ class PagerFragment : MainFragment(), PagerAdapter.OnItemClickListener, PagerAda
         get() = (parentFragment as HomeFragment).multiselect
     private val selectedList get() = (parentFragment as HomeFragment).selectedList
     private val tabs: TabLayout? get() = (parentFragment as? HomeFragment)?.binding?.tabs
+    private val pager: ViewPager2? get() = (parentFragment as? HomeFragment)?.binding?.pager
     private val adapter: HomeAdapter? get() = (parentFragment as? HomeFragment)?.binding?.pager?.adapter as? HomeAdapter
     private val tag: Pair<String, Int>? get() = tabs?.let { HailData.tags.getOrNull(it.selectedTabPosition) }
 
@@ -114,6 +116,15 @@ class PagerFragment : MainFragment(), PagerAdapter.OnItemClickListener, PagerAda
 
     override fun onResume() {
         super.onResume()
+        // 修复：从后台切回时 TabLayout 选中位置可能与 ViewPager2 当前页不同步，
+        // 导致「标签显示 A、内容却是 B」；恢复前先强制对齐
+        val tabLayout = tabs
+        val viewPager = pager
+        if (tabLayout != null && viewPager != null &&
+            tabLayout.selectedTabPosition != viewPager.currentItem
+        ) {
+            tabLayout.getTabAt(viewPager.currentItem)?.select()
+        }
         updateCurrentList()
         updateBarTitle()
         activity.appbar.setLiftOnScrollTargetView(binding.recyclerView)
