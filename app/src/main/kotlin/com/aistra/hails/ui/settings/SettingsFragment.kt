@@ -83,6 +83,9 @@ class SettingsFragment : MainFragment(), MenuProvider {
         val shakeOverlay = rememberPreferenceState(HailData.SHAKE_OVERLAY, false)
         val shakeFloatingBall = rememberPreferenceState(HailData.SHAKE_FLOATING_BALL, false)
         val recentTaskFreeze = rememberPreferenceState(HailData.RECENT_TASK_FREEZE, false)
+        val recentTaskFreezeTrigger = rememberPreferenceState(
+            HailData.RECENT_TASK_FREEZE_TRIGGER, HailData.TRIGGER_POLL
+        )
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             listPreference(
                 key = HailData.WORKING_MODE,
@@ -206,13 +209,30 @@ class SettingsFragment : MainFragment(), MenuProvider {
                     icon = { Icon(imageVector = Icons.Outlined.DeleteSweep, contentDescription = null) }
                 )
             }
+            listPreference(
+                key = HailData.RECENT_TASK_FREEZE_TRIGGER,
+                defaultValue = HailData.TRIGGER_POLL,
+                onValueChange = { _, _ ->
+                    // 重启服务让新的触发方式立即生效
+                    app.setRecentTaskFreezeService(false)
+                    if (recentTaskFreeze.value) app.setRecentTaskFreezeService(true)
+                    true
+                },
+                values = mutableListOf(HailData.TRIGGER_POLL, HailData.TRIGGER_TASK_LISTENER),
+                entriesId = R.array.recent_task_freeze_trigger_entries,
+                titleId = R.string.recent_task_freeze_trigger,
+                icon = Icons.Outlined.Bolt,
+                type = ListPreferenceType.ALERT_DIALOG
+            )
             sliderPreference(
                 key = HailData.RECENT_TASK_FREEZE_INTERVAL,
                 defaultValue = 2f,
                 title = { Text(text = stringResource(R.string.recent_task_freeze_interval)) },
                 valueRange = 2f..10f,
                 valueSteps = 8,
-                enabled = { recentTaskFreeze.value },
+                enabled = {
+                    recentTaskFreeze.value && recentTaskFreezeTrigger.value == HailData.TRIGGER_POLL
+                },
                 icon = { Icon(imageVector = Icons.Outlined.Timer, contentDescription = null) },
                 valueText = { Text(text = "${it.toInt()}s") }
             )

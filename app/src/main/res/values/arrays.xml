@@ -86,6 +86,10 @@
         <item>@string/action_lock</item>
         <item>@string/action_lock_freeze</item>
     </string-array>
+    <string-array name="recent_task_freeze_trigger_entries">
+        <item>@string/recent_task_freeze_trigger_poll</item>
+        <item>@string/recent_task_freeze_trigger_listener</item>
+    </string-array>
     <string-array name="shake_floating_ball_action_entries">
         <item>@string/action_freeze_all</item>
         <item>@string/action_lock</item>

@@ -30,6 +30,9 @@ object HShizuku {
     private fun asInterface(className: String, serviceName: String): Any =
         asInterface(className, SystemServiceHelper.getSystemService(serviceName))
 
+    /** 供任务栈监听等场景直接取 IActivityTaskManager */
+    fun getActivityTaskManager(): Any = asInterface("android.app.IActivityTaskManager", "activity_task")
+
     val lockScreen
         get() = runCatching {
             val input = asInterface("android.hardware.input.IInputManager", Context.INPUT_SERVICE)

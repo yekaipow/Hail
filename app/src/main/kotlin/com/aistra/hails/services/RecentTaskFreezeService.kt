@@ -7,9 +7,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.os.Binder
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.Parcel
 import android.os.PowerManager
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
@@ -21,8 +23,10 @@ import com.aistra.hails.app.AppManager
 import com.aistra.hails.app.HailData
 import com.aistra.hails.app.UnfrozenStore
 import com.aistra.hails.ui.main.MainActivity
+import com.aistra.hails.utils.HLog
 import com.aistra.hails.utils.HShell
 import com.aistra.hails.utils.HShizuku
+import org.lsposed.hiddenapibypass.HiddenApiBypass
 import com.aistra.hails.utils.HTarget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,11 +34,16 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.lang.reflect.Proxy
 
 /**
  * 「划走最近任务即冻结」服务。
  *
- * 触发方式：定时轮询最近任务列表并与上一份快照比对。
+ * 触发方式二选一（设置里可切换）：
+ * 1. 轮询：定时检查（2-10 秒）
+ * 2. 任务栈监听：Shizuku 注册系统 TaskStackListener，任务被移除时实时回调
+ *
+ * 每次触发都查询「冻结」栏里未冻结的应用是否还在最近任务列表，不在的冻结。
  * 每次查询最近任务列表，与上一份快照比对，消失的任务对应的包名如果在「冻结」栏里
  * 且尚未冻结，就冻结它（未锁定的项冻结后自动移出列表）。
  * 任务列表通过 Shizuku / root 的 dumpsys 读取；只亮屏时轮询，灭屏即停。
@@ -44,8 +53,8 @@ class RecentTaskFreezeService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val handler = Handler(Looper.getMainLooper())
-    private var snapshot: Set<String>? = null
     private var polling = false
+    private var taskStackBinder: Binder? = null
 
     /** 轮询心跳：查一次任务列表并处理差集 */
     private val pollRunnable = object : Runnable {
@@ -119,29 +128,72 @@ class RecentTaskFreezeService : Service() {
     }
 
     /**
-     * 查一次任务列表，与上一份快照比对：消失的任务若在「冻结」栏里且未冻结 → 冻结。
-     * 首次只建立基线，避免启动瞬间把历史任务全部误判为"被划走"。
+     * 查一次：把「冻结」栏里尚未冻结、但已经不在最近任务列表的应用冻结。
+     * （不依赖前后快照差集，任务被划走和自然结束都会被判定为"不在列表"）
      */
     private fun poll() {
         scope.launch {
-            // 「冻结」栏为空时没有可冻结对象，跳过查询省电
-            if (withContext(Dispatchers.IO) { UnfrozenStore.packages().isEmpty() }) return@launch
-            val running = withContext(Dispatchers.IO) { queryRunningPackages() }
-            if (running == null) return@launch
-            val previous = snapshot
-            snapshot = running
-            if (previous == null) return@launch
-            val disappeared = previous - running
-            if (disappeared.isEmpty()) return@launch
-            val targets = withContext(Dispatchers.IO) {
-                disappeared.filter {
-                    it != packageName && UnfrozenStore.contains(it) && !AppManager.isAppFrozen(it)
-                }
+            val unfrozen = withContext(Dispatchers.IO) {
+                UnfrozenStore.packages().filter { it != packageName && !AppManager.isAppFrozen(it) }
             }
+            // 没有可冻结对象时跳过查询，省电
+            if (unfrozen.isEmpty()) return@launch
+            val running = withContext(Dispatchers.IO) { queryRunningPackages() } ?: return@launch
+            val targets = unfrozen.filter { it !in running }
             if (targets.isEmpty()) return@launch
             withContext(Dispatchers.IO) {
                 targets.forEach { AppManager.setAppFrozen(it, true) }
             }
+            HUI.showToast(R.string.recent_task_freeze_debug_frozen, targets.joinToString(", "))
+        }
+    }
+
+    /**
+     * 通过 Shizuku 注册系统 TaskStackListener。
+     *
+     * ITaskStackListener 是 hidden AIDL 接口，无法直接继承 Stub，这里用两步绕过：
+     * 1. 用 [Proxy] 生成一个实现该接口的对象，拦截 asBinder() 返回自己的 Binder
+     *    （注册端会调用 listener.asBinder() 取 binder，类型检查通过）
+     * 2. 自定义 Binder.onTransact 接收系统回调：onTaskRemoved(taskId) 的 data 只剩一个 int
+     */
+    private fun registerTaskStackListener(): Boolean {
+        if (!HailData.workingMode.startsWith(HailData.SHIZUKU)) return false
+        return runCatching {
+            val taskManager = HShizuku.getActivityTaskManager()
+            val listenerClass = Class.forName("android.app.ITaskStackListener")
+            val binder = object : Binder() {
+                override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
+                    return try {
+                        data.enforceInterface(TASK_STACK_LISTENER_DESCRIPTOR)
+                        // onTaskRemoved(int taskId)：参数只有一个 int
+                        if (data.dataAvail() == 4) {
+                            data.readInt()
+                            // Binder 线程没有 Looper，toast 必须回主线程
+                            mainHandler.post {
+                                HUI.showToast(R.string.recent_task_freeze_debug_callback)
+                            }
+                            // 只在亮屏时响应，避免灭屏期间系统清理导致误冻
+                            if (isInteractive()) poll()
+                        }
+                        reply?.writeNoException()
+                        true
+                    } catch (_: Throwable) {
+                        super.onTransact(code, data, reply, flags)
+                    }
+                }
+            }
+            val proxy = Proxy.newProxyInstance(
+                listenerClass.classLoader,
+                arrayOf(listenerClass)
+            ) { _, method, _ -> if (method.name == "asBinder") binder else null }
+            HiddenApiBypass.invoke(
+                taskManager.javaClass, taskManager, "registerTaskStackListener", proxy
+            )
+            taskStackBinder = binder
+            true
+        }.getOrElse {
+            HLog.e(it)
+            false
         }
     }
 
@@ -189,6 +241,9 @@ class RecentTaskFreezeService : Service() {
 
     private companion object {
         const val NOTIFICATION_ID = 103
+
+        /** ITaskStackListener 的 AIDL 描述符 */
+        const val TASK_STACK_LISTENER_DESCRIPTOR = "android.app.ITaskStackListener"
 
         /** 轮询间隔下限 / 上限（毫秒），对应设置里的 2-10 秒 */
         const val MIN_POLL_INTERVAL_MS = 2000L

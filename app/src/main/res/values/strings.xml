@@ -174,6 +174,14 @@
     <string name="recent_task_freeze">Freeze when swiped from recents</string>
     <string name="recent_task_freeze_desc">Freeze unfrozen apps in the freeze bar once their task is swiped away</string>
     <string name="recent_task_freeze_interval">Polling interval</string>
+    <string name="recent_task_freeze_trigger">Trigger</string>
+    <string name="recent_task_freeze_trigger_poll">Polling</string>
+    <string name="recent_task_freeze_trigger_listener">Task listener (Shizuku)</string>
+    <string name="recent_task_freeze_debug_started">Swipe-freeze service started (polling)</string>
+    <string name="recent_task_freeze_debug_listener_ok">Task listener registered (Shizuku)</string>
+    <string name="recent_task_freeze_debug_listener_failed">Task listener registration failed, check Shizuku</string>
+    <string name="recent_task_freeze_debug_callback">Task changed</string>
+    <string name="recent_task_freeze_debug_frozen">Frozen: %1$s</string>
     <string name="recent_task_freeze_requires">Needs Shizuku or root mode</string>
     <string name="shake_floating_ball">Floating ball</string>
     <string name="shake_floating_ball_desc">Show a floating ball to toggle the overlay panel</string>

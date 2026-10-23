@@ -121,6 +121,9 @@ object HailData {
     const val AUTO_FREEZE_AFTER_LOCK = "auto_freeze_after_lock"
     const val RECENT_TASK_FREEZE = "recent_task_freeze"
     const val RECENT_TASK_FREEZE_INTERVAL = "recent_task_freeze_interval_f"
+    const val RECENT_TASK_FREEZE_TRIGGER = "recent_task_freeze_trigger"
+    const val TRIGGER_POLL = "poll"
+    const val TRIGGER_TASK_LISTENER = "listener"
     const val AUTO_FREEZE_DELAY = "auto_freeze_delay_f"
     const val SKIP_WHILE_CHARGING = "skip_while_charging"
     const val SKIP_FOREGROUND_APP = "skip_foreground_app"
@@ -169,6 +172,9 @@ object HailData {
 
     /** 「划走即冻结」的轮询间隔（秒），2-10 */
     val recentTaskFreezeInterval get() = sp.getFloat(RECENT_TASK_FREEZE_INTERVAL, 2f)
+
+    /** 「划走即冻结」的触发方式：轮询 / 任务栈监听（Shizuku） */
+    val recentTaskFreezeTrigger get() = sp.getString(RECENT_TASK_FREEZE_TRIGGER, TRIGGER_POLL)!!
     val autoFreezeDelay get() = sp.getFloat(AUTO_FREEZE_DELAY, 0f).toLong()
     val skipWhileCharging get() = sp.getBoolean(SKIP_WHILE_CHARGING, false)
     val skipForegroundApp get() = sp.getBoolean(SKIP_FOREGROUND_APP, false)
