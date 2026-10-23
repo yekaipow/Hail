@@ -1,7 +1,6 @@
 package com.aistra.hails.ui.overlay
 
 import android.content.Context
-import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.ColorMatrix
@@ -22,11 +21,12 @@ import androidx.appcompat.view.ContextThemeWrapper
 import androidx.core.graphics.drawable.toBitmap
 import com.aistra.hails.R
 import com.aistra.hails.app.AppManager
+import com.aistra.hails.app.AppInfo
 import com.aistra.hails.app.HailData
-import com.aistra.hails.app.RecentApps
 import com.aistra.hails.app.UnfrozenStore
 import com.aistra.hails.utils.HPackages
 import com.aistra.hails.utils.HUI
+import com.aistra.hails.utils.NameComparator
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.color.MaterialColors
 import kotlinx.coroutines.CoroutineScope
@@ -47,10 +47,13 @@ private data class OverlayApp(
 /**
  * 摇一摇后弹出的悬浮面板（纯 View 实现）。
  *
- * 内容固定为「最近打开的 10 个应用」，网格多行排列：
- * 点击冻结的应用 → 解冻并打开；点击未冻结的应用 → 直接冻结。
+ * 内容就是首页底部那块「冻结」区（fragment_home.xml 里的 frozen_list）：
+ * 数据取自 UnfrozenStore，最多 10 个、四列网格；点击冻结项解冻并打开，点击未冻结项直接冻结。
  *
- * 这里刻意不用 Compose：Compose 在 WindowManager 里必须手动提供 ViewTreeLifecycleOwner，
+ * 注意：这里是自己构建格子 + 直接 loadIcon，没有复用 FrozenBarAdapter / AppIconCache /
+ * item_frozen_bar。那套 UI 是给 Activity 用的，搬进 Service 悬浮窗会在运行时崩溃。
+ *
+ * 另外也没有用 Compose：Compose 在 WindowManager 里必须手动提供 ViewTreeLifecycleOwner，
  * 而本项目没有直接依赖 lifecycle-runtime，编译期拿不到这个类（CI 已因此失败过一次）。
  */
 class ShakeOverlayPanel(
@@ -61,6 +64,7 @@ class ShakeOverlayPanel(
 ) : MaterialCardView(ContextThemeWrapper(context, R.style.Theme_Hail)) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val gridContainer = LinearLayout(context)
+    private val titleView = TextView(context)
     private var apps: List<OverlayApp> = emptyList()
 
     /** 内容尺寸变化后通知宿主动手重新测量悬浮窗（窗口高度是 WRAP_CONTENT） */
@@ -111,8 +115,7 @@ class ShakeOverlayPanel(
             setImageDrawable(context.applicationInfo.loadIcon(context.packageManager))
             layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
         })
-        addView(TextView(context).apply {
-            text = context.getString(R.string.app_name)
+        addView(titleView.apply {
             textSize = 16f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(colorOnSurface)
@@ -217,6 +220,8 @@ class ShakeOverlayPanel(
                 gridContainer.addView(row, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
             }
         }
+        titleView.text = if (apps.isEmpty()) context.getString(R.string.label_unfrozen)
+        else "${context.getString(R.string.label_unfrozen)} (${apps.size})"
         // 内容高度变了，等这一帧布局完成再让宿主重新测量窗口
         post { onLayoutChanged?.invoke() }
     }
@@ -237,7 +242,6 @@ class ShakeOverlayPanel(
                     notifyFailure()
                     return@launch
                 }
-                RecentApps.add(app.packageName)
                 onOpenApp(app.packageName)
             } else {
                 val frozen = withContext(Dispatchers.IO) { AppManager.setAppFrozen(app.packageName, true) }
@@ -305,29 +309,30 @@ class ShakeOverlayPanel(
         const val ICON_SIZE = 72
 
         /**
-         * 优先展示最近解冻/打开的 [MAX_ITEMS] 个应用；还没有任何记录时
-         * （刚更新完、还没解冻过应用）回退到首页应用，避免面板空白。
+         * 读取首页「冻结」区的同一份数据：UnfrozenStore 里待处理的应用。
+         * 卸载的记录顺手清理，按名称排序后最多取 [MAX_ITEMS] 个。
          */
         fun loadApps(context: Context): List<OverlayApp> {
             val packageManager = context.packageManager
-            val recent = resolve(packageManager, RecentApps.list())
-            val candidates = if (recent.isNotEmpty()) recent
-            else resolve(packageManager, HailData.checkedList.map { it.packageName })
-            return candidates.take(MAX_ITEMS)
+            return UnfrozenStore.packages()
+                .map { AppInfo(it) }
+                .filter {
+                    if (it.applicationInfo == null) UnfrozenStore.remove(it.packageName)
+                    it.applicationInfo != null
+                }
+                .sortedWith(NameComparator)
+                .take(MAX_ITEMS)
+                .mapNotNull { info ->
+                    val applicationInfo = info.applicationInfo ?: return@mapNotNull null
+                    OverlayApp(
+                        packageName = info.packageName,
+                        label = applicationInfo.loadLabel(packageManager).toString(),
+                        icon = runCatching {
+                            applicationInfo.loadIcon(packageManager).toBitmap(ICON_SIZE, ICON_SIZE)
+                        }.getOrNull(),
+                        frozen = AppManager.isAppFrozen(info.packageName)
+                    )
+                }
         }
-
-        /** 按传入顺序解析，卸载或读不到的应用直接跳过 */
-        private fun resolve(packageManager: PackageManager, packageNames: List<String>): List<OverlayApp> =
-            packageNames.mapNotNull { packageName ->
-                val applicationInfo = HPackages.getApplicationInfoOrNull(packageName) ?: return@mapNotNull null
-                OverlayApp(
-                    packageName = packageName,
-                    label = applicationInfo.loadLabel(packageManager).toString(),
-                    icon = runCatching {
-                        applicationInfo.loadIcon(packageManager).toBitmap(ICON_SIZE, ICON_SIZE)
-                    }.getOrNull(),
-                    frozen = AppManager.isAppFrozen(packageName)
-                )
-            }
     }
 }
