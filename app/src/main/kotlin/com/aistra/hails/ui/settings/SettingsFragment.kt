@@ -186,15 +186,6 @@ class SettingsFragment : MainFragment(), MenuProvider {
             )
             horizontalDivider()
             preferenceCategory(key = "auto_freeze", title = { Text(text = stringResource(R.string.auto_freeze)) })
-            switchPreference(
-                rememberState = { autoFreezeAfterLock },
-                onValueChange = { _, value ->
-                    app.setAutoFreezeService(value)
-                    true
-                },
-                titleId = R.string.auto_freeze_after_lock,
-                icon = Icons.Outlined.ScreenLockPortrait
-            )
             item(key = HailData.RECENT_TASK_FREEZE, contentType = "SwitchPreference") {
                 SwitchPreference(
                     value = recentTaskFreeze.value,
@@ -206,6 +197,15 @@ class SettingsFragment : MainFragment(), MenuProvider {
                     icon = { Icon(imageVector = Icons.Outlined.DeleteSweep, contentDescription = null) }
                 )
             }
+            switchPreference(
+                rememberState = { autoFreezeAfterLock },
+                onValueChange = { _, value ->
+                    app.setAutoFreezeService(value)
+                    true
+                },
+                titleId = R.string.auto_freeze_after_lock,
+                icon = Icons.Outlined.ScreenLockPortrait
+            )
             sliderPreference(
                 key = HailData.AUTO_FREEZE_DELAY,
                 defaultValue = 0f,

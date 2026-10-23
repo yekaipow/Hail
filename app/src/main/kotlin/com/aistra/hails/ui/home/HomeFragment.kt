@@ -49,6 +49,9 @@ class HomeFragment : MainFragment() {
 
     /** 防止「解冻列表变化」回调整理未安装应用时递归触发 */
     private var updatingBar = false
+
+    /** 上次的锁定状态快照：锁定状态是实时查询，DiffUtil 检测不到变化，需手动比对 */
+    private var lastLockedState: Map<String, Boolean> = emptyMap()
     private val sp by lazy { PreferenceManager.getDefaultSharedPreferences(app) }
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == UnfrozenStore.KEY || key == UnfrozenStore.KEY_LOCKED) updateFrozenBar()
@@ -123,6 +126,12 @@ class HomeFragment : MainFragment() {
             updateFrozenTitle(binding, list.size)
             if (visible) applyFrozenListHeight(list.size)
             binding.frozenBar.isVisible = visible
+            // 锁定状态变化（含悬浮窗长按等外部入口）→ 局部重绑对应项刷新锁图标
+            val lockedState = list.associate { it.packageName to UnfrozenStore.isLocked(it.packageName) }
+            lockedState.forEach { (pkg, locked) ->
+                if (lastLockedState[pkg] != locked) frozenAdapter.refreshItem(pkg)
+            }
+            lastLockedState = lockedState
             frozenAdapter.submitList(list)
         } finally {
             updatingBar = false
@@ -247,6 +256,8 @@ class HomeFragment : MainFragment() {
         val locked = UnfrozenStore.isLocked(info.packageName)
         UnfrozenStore.setLocked(info.packageName, !locked)
         HUI.showToast(if (locked) R.string.msg_unlocked else R.string.msg_locked, info.name)
+        // 锁定状态是实时查询，DiffUtil 判断不出变化，局部重绑刷新名称前的锁图标
+        frozenAdapter.refreshItem(info.packageName)
     }
 
     private companion object {
