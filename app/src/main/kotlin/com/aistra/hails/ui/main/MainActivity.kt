@@ -1,5 +1,6 @@
 package com.aistra.hails.ui.main
 
+import android.app.ActivityManager
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Menu
