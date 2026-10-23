@@ -221,6 +221,9 @@ class HomeFragment : MainFragment() {
         // 冻结成功后：未锁定的由 AppManager 移出列表，锁定的保留
         if (AppManager.setAppFrozen(info.packageName, true)) {
             HUI.showToast(R.string.msg_freeze, info.name)
+            // 锁定项不会被 UnfrozenStore 移除，SP 无变化不会触发自动刷新，
+            // 这里主动刷新让图标立刻变灰（未锁定项则被移出列表）
+            updateFrozenBar()
         } else {
             HUI.showToast(R.string.permission_denied)
         }
