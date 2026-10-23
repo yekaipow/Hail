@@ -171,6 +171,8 @@
     <string name="shake_overlay_no_sensor">Accelerometer not found, shake detection is unavailable</string>
     <string name="shake_overlay_start_failed">Unable to start the shake service, please enable it again in settings</string>
     <string name="shake_overlay_empty">No apps waiting here</string>
+    <string name="shake_lock_screen">Lock screen</string>
+    <string name="shake_lock_screen_unavailable">Lock screen needs an active device admin, root or Shizuku</string>
     <string name="shake_state_frozen">Frozen</string>
     <string name="shake_state_unfrozen">Running</string>
     <string name="shake_open_app">Open Hail</string>

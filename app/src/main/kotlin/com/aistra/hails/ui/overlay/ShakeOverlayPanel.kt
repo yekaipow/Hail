@@ -23,6 +23,9 @@ import com.aistra.hails.app.AppManager
 import com.aistra.hails.app.AppInfo
 import com.aistra.hails.app.HailData
 import com.aistra.hails.app.UnfrozenStore
+import com.aistra.hails.utils.HPolicy
+import com.aistra.hails.utils.HShell
+import com.aistra.hails.utils.HShizuku
 import com.aistra.hails.utils.HUI
 import com.aistra.hails.utils.NameComparator
 import com.google.android.material.card.MaterialCardView
@@ -141,6 +144,10 @@ class ShakeOverlayPanel(
         )
         addView(
             textButton(context.getString(R.string.action_unfreeze_all), 14f) { setAll(false) },
+            LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
+        )
+        addView(
+            textButton(context.getString(R.string.shake_lock_screen), 14f) { lockScreen() },
             LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
         )
     }
@@ -301,6 +308,26 @@ class ShakeOverlayPanel(
                 targets.count { AppManager.setAppFrozen(it, frozen) }
             }
             if (changed == 0) notifyFailure() else reload()
+        }
+    }
+
+    /**
+     * 锁屏：优先用已激活的设备管理员（lockNow），
+     * root / Shizuku 模式下发电源键；都没有时提示不可用。
+     * 成功后关闭悬浮窗。
+     */
+    private fun lockScreen() {
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                when {
+                    HPolicy.isAdminActive -> HPolicy.lockScreen
+                    HailData.workingMode.startsWith(HailData.SU) -> HShell.lockScreen
+                    HailData.workingMode.startsWith(HailData.SHIZUKU) ->
+                        HShizuku.execute("input keyevent KEYCODE_POWER").first == 0
+                    else -> false
+                }
+            }
+            if (ok) onClose() else HUI.showToast(R.string.shake_lock_screen_unavailable)
         }
     }
 
