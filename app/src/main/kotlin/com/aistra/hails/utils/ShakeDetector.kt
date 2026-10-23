@@ -12,14 +12,14 @@ import kotlin.math.sqrt
 /**
  * 摇一摇检测器。
  *
- * 判定策略：加速度计负责「幅度」，陀螺仪负责「旋转」，两者在 [WINDOW] 毫秒内同时命中才算一次摇晃。
- * 只用加速度计会被走路、骑车、地铁颠簸误触；只用陀螺仪会被缓慢转动手腕误触；
- * 两者同时成立更接近「有意摇晃手机」。
- * 设备没有陀螺仪时自动退化为只用加速度计。
+ * 只注册一个传感器，把后台功耗降到最低：优先陀螺仪（角速度对「有意摇晃」最敏感，
+ * 不受重力与走路颠簸干扰）；设备没有陀螺仪时自动退化为加速度计。
  *
- * 灵敏度 0..1 线性映射到加速度阈值 [LIGHT_THRESHOLD]..[HEAVY_THRESHOLD] m/s²（越小越容易触发）。
+ * 灵敏度 0..1 线性映射到阈值（灵敏度越高阈值越低，越容易触发）：
+ * - 陀螺仪：[GYRO_LIGHT]..[GYRO_HEAVY] rad/s
+ * - 加速度计：[LIGHT_THRESHOLD]..[HEAVY_THRESHOLD] m/s²
  *
- * 注意：本类只负责判定，何时注册/注销由调用方按屏幕状态控制，以降低耗电。
+ * 何时注册 / 注销由调用方按屏幕与锁屏状态控制，以进一步降低耗电。
  */
 class ShakeDetector(
     context: Context,
@@ -30,31 +30,26 @@ class ShakeDetector(
     private val accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
     private val gyroscope = sensorManager?.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
 
-    /** 重力低通滤波的估计值，用于从原始加速度中剥离重力分量 */
+    /** 只用一个传感器：优先陀螺仪，缺陀螺仪时用加速度计 */
+    private val sensor = gyroscope ?: accelerometer
+    private val useGyroscope = gyroscope != null
+
+    /** 重力低通滤波的估计值，仅加速度计模式使用 */
     private val gravity = FloatArray(3)
-    private var lastAccelerometerHit = 0L
-    private var lastGyroscopeHit = 0L
     private var lastShakeTime = 0L
     private var listening = false
 
-    val isSupported: Boolean get() = accelerometer != null
+    val isSupported: Boolean get() = sensor != null
 
-    /** @return 是否成功开始监听（无加速度计时返回 false） */
+    /** @return 是否成功开始监听（无可用传感器时返回 false） */
     fun start(): Boolean {
         val manager = sensorManager ?: return false
-        val sensor = accelerometer ?: return false
+        val target = sensor ?: return false
         if (listening) return true
         gravity.fill(0f)
-        lastAccelerometerHit = 0L
-        lastGyroscopeHit = 0L
-        /*
-         * 用 SENSOR_DELAY_UI（约 60ms）而不是 GAME（约 20ms）：
-         * 一次摇晃持续 200ms+，60ms 采样足够抓到 2-3 个峰值，判定不受影响，
-         * 但采样功耗降到约 1/3。这是后台阶段最主要的耗电来源。
-         */
-        listening = manager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_UI)
-        // 陀螺仪只用于佐证，注册失败不影响主检测
-        gyroscope?.let { manager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
+        lastShakeTime = 0L
+        // SENSOR_DELAY_UI（约 60ms）：一次摇晃持续 200ms 以上，足够抓到峰值，功耗远低于 GAME
+        listening = manager.registerListener(this, target, SensorManager.SENSOR_DELAY_UI)
         return listening
     }
 
@@ -65,49 +60,40 @@ class ShakeDetector(
     }
 
     override fun onSensorChanged(event: SensorEvent) {
-        when (event.sensor.type) {
-            Sensor.TYPE_ACCELEROMETER -> {
-                val v = event.values
-                gravity[0] = ALPHA * gravity[0] + (1 - ALPHA) * v[0]
-                gravity[1] = ALPHA * gravity[1] + (1 - ALPHA) * v[1]
-                gravity[2] = ALPHA * gravity[2] + (1 - ALPHA) * v[2]
-                val x = v[0] - gravity[0]
-                val y = v[1] - gravity[1]
-                val z = v[2] - gravity[2]
-                if (sqrt(x * x + y * y + z * z) > accelerometerThreshold()) {
-                    lastAccelerometerHit = now()
-                    maybeShake()
-                }
-            }
-
-            Sensor.TYPE_GYROSCOPE -> {
-                val v = event.values
-                if (sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) > GYROSCOPE_THRESHOLD) {
-                    lastGyroscopeHit = now()
-                    maybeShake()
-                }
-            }
+        val time = now()
+        // 冷却期内直接丢弃，省掉后续计算
+        if (time - lastShakeTime < COOLDOWN) return
+        val v = event.values
+        val hit = if (useGyroscope) {
+            // 单陀螺仪判定：角速度幅值超过阈值即视为有意摇晃
+            sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) > gyroscopeThreshold()
+        } else {
+            // 回退加速度计：先剥离重力，再看线性加速度幅值
+            gravity[0] = ALPHA * gravity[0] + (1 - ALPHA) * v[0]
+            gravity[1] = ALPHA * gravity[1] + (1 - ALPHA) * v[1]
+            gravity[2] = ALPHA * gravity[2] + (1 - ALPHA) * v[2]
+            val x = v[0] - gravity[0]
+            val y = v[1] - gravity[1]
+            val z = v[2] - gravity[2]
+            sqrt(x * x + y * y + z * z) > accelerometerThreshold()
         }
+        if (!hit) return
+        lastShakeTime = time
+        onShake()
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
     private fun now() = SystemClock.elapsedRealtime()
 
+    private fun gyroscopeThreshold(): Float {
+        val s = sensitivity().coerceIn(0f, 1f)
+        return GYRO_LIGHT + (GYRO_HEAVY - GYRO_LIGHT) * (1f - s)
+    }
+
     private fun accelerometerThreshold(): Float {
         val s = sensitivity().coerceIn(0f, 1f)
         return LIGHT_THRESHOLD + (HEAVY_THRESHOLD - LIGHT_THRESHOLD) * (1f - s)
-    }
-
-    private fun maybeShake() {
-        val time = now()
-        if (time - lastShakeTime < COOLDOWN) return
-        val accelerometerFresh = time - lastAccelerometerHit <= WINDOW
-        // 没有陀螺仪时视为无条件满足
-        val gyroscopeFresh = gyroscope == null || time - lastGyroscopeHit <= WINDOW
-        if (!accelerometerFresh || !gyroscopeFresh) return
-        lastShakeTime = time
-        onShake()
     }
 
     private companion object {
@@ -117,16 +103,12 @@ class ShakeDetector(
         /** 两次触发的最小间隔，避免一次摇晃连续弹出多次 */
         const val COOLDOWN = 1200L
 
-        /** 加速度与陀螺仪命中需要落在同一个时间窗口内 */
-        const val WINDOW = 350L
+        /** 陀螺仪角速度阈值（rad/s）：灵敏度最高时轻晃即可，最低时需明显甩动 */
+        const val GYRO_LIGHT = 1.5f
+        const val GYRO_HEAVY = 3.0f
 
-        /** 角速度阈值（rad/s），过滤缓慢转动手腕 */
-        const val GYROSCOPE_THRESHOLD = 1.5f
-
-        /** 灵敏度最高时的加速度阈值（m/s²），轻摇即可触发 */
+        /** 加速度阈值（m/s²），仅无陀螺仪的设备使用 */
         const val LIGHT_THRESHOLD = 9f
-
-        /** 灵敏度最低时的加速度阈值（m/s²），需要明显甩动 */
         const val HEAVY_THRESHOLD = 18f
     }
 }
