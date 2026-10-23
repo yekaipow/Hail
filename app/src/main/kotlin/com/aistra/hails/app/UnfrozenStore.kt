@@ -11,7 +11,8 @@ import com.aistra.hails.HailApp.Companion.app
  * 移除：应用被冻结成功时（无论来自哪条路径）。
  */
 object UnfrozenStore {
-    private const val KEY = "unfrozen_packages"
+    /** SharedPreferences 中的键，监听此键可实时刷新界面 */
+    const val KEY = "unfrozen_packages"
 
     private val sp by lazy { PreferenceManager.getDefaultSharedPreferences(app) }
 

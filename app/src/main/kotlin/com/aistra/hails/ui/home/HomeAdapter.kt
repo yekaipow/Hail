@@ -5,20 +5,7 @@ import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.aistra.hails.app.HailData.tags
 
 class HomeAdapter(fragment: HomeFragment) : FragmentStateAdapter(fragment) {
-    /** 标签页 + 末尾固定的「冻结」页 */
-    override fun getItemCount(): Int = tags.size + 1
+    override fun getItemCount(): Int = tags.size
 
-    override fun createFragment(position: Int): Fragment =
-        if (position < tags.size) PagerFragment() else UnfrozenFragment()
-
-    /** 用标签 ID 作为稳定 ID，增删标签时不会重建其它页面 */
-    override fun getItemId(position: Int): Long =
-        tags.getOrNull(position)?.second?.toLong()?.shl(1) ?: UNFROZEN_PAGE_ID
-
-    override fun containsItem(itemId: Long): Boolean =
-        itemId == UNFROZEN_PAGE_ID || tags.any { it.second.toLong().shl(1) == itemId }
-
-    private companion object {
-        const val UNFROZEN_PAGE_ID = Long.MIN_VALUE
-    }
+    override fun createFragment(position: Int): Fragment = PagerFragment()
 }
