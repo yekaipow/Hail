@@ -132,4 +132,8 @@ class ShakeOverlayService : Service() {
             .build()
         NotificationManagerCompat.from(this).createNotificationChannel(channel)
     }
+
+    private companion object {
+        const val NOTIFICATION_ID = 101
+    }
 }
