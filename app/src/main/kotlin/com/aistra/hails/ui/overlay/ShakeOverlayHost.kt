@@ -5,7 +5,6 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.provider.Settings
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup.LayoutParams
 import android.view.WindowManager
 import com.aistra.hails.R
@@ -46,17 +45,10 @@ class ShakeOverlayHost(private val context: Context) {
             },
             onDrag = { dx, dy -> moveBy(dx, dy) }
         )
-        panel.onLayoutChanged = {
+        panel.onContentHeightChanged = { heightPx ->
             runCatching {
-                /*
-                 * 不依赖 WRAP_CONTENT 窗口的自适应：某些 ROM 上内容变高后窗口不会跟着长，
-                 * 多出来的行会被窗口边界裁掉（表现为只剩一行）。
-                 * 这里在布局完成后用无约束高度重测一次，拿到内容的自然高度显式固化给窗口。
-                 */
-                val widthSpec = View.MeasureSpec.makeMeasureSpec(params.width, View.MeasureSpec.EXACTLY)
-                val heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-                panel.measure(widthSpec, heightSpec)
-                if (panel.measuredHeight > 0) params.height = panel.measuredHeight
+                // 面板把内容精确高度算好了，直接固化，窗口不可能再裁掉内容
+                params.height = heightPx
                 windowManager.updateViewLayout(panel, params)
             }
         }

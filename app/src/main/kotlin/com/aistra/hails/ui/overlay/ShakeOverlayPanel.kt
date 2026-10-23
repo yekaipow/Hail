@@ -65,8 +65,11 @@ class ShakeOverlayPanel(
     private val titleView = TextView(context)
     private var apps: List<OverlayApp> = emptyList()
 
-    /** 内容尺寸变化后通知宿主动手重新测量悬浮窗（窗口高度是 WRAP_CONTENT） */
-    var onLayoutChanged: (() -> Unit)? = null
+    /**
+     * 内容高度变化后回调，参数是面板应有的精确像素高度。
+     * 高度全部由固定尺寸部件算出，不依赖系统对窗口的自适应测量。
+     */
+    var onContentHeightChanged: ((Int) -> Unit)? = null
 
     private val colorOnSurface by lazy { color(com.google.android.material.R.attr.colorOnSurface) }
     private val colorOnSurfaceVariant by lazy { color(com.google.android.material.R.attr.colorOnSurfaceVariant) }
@@ -91,21 +94,22 @@ class ShakeOverlayPanel(
 
     private fun buildContent(): View {
         gridContainer.orientation = LinearLayout.VERTICAL
-        gridContainer.setPadding(dp(6), dp(8), dp(6), dp(4))
+        gridContainer.setPadding(dp(6), 0, dp(6), 0)
+        gridContainer.gravity = Gravity.CENTER
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            addView(buildHeader(), LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+            addView(buildHeader(), LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(HEADER_DP)))
             addView(buildDivider())
-            addView(gridContainer, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+            addView(gridContainer, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(EMPTY_HEIGHT_DP)))
             addView(buildDivider())
-            addView(buildFooter(), LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+            addView(buildFooter(), LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(FOOTER_DP)))
         }
     }
 
     private fun buildHeader(): View = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(16), dp(8), dp(4), dp(8))
+        setPadding(dp(16), 0, dp(4), 0)
         // 按住标题栏拖动窗口
         setOnTouchListener(DragListener())
 
@@ -126,7 +130,8 @@ class ShakeOverlayPanel(
 
     private fun buildFooter(): View = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
-        setPadding(dp(8), dp(4), dp(8), dp(4))
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(8), 0, dp(8), 0)
         addView(
             textButton(context.getString(R.string.action_freeze_all), 14f) { setAll(true) },
             LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
@@ -197,22 +202,22 @@ class ShakeOverlayPanel(
 
     private fun render() {
         gridContainer.removeAllViews()
-        if (apps.isEmpty()) {
+        val rows = apps.chunked(COLUMNS)
+        if (rows.isEmpty()) {
             gridContainer.addView(TextView(context).apply {
                 text = context.getString(R.string.shake_overlay_empty)
                 textSize = 13f
                 gravity = Gravity.CENTER
                 setTextColor(colorOnSurfaceVariant)
-                setPadding(dp(20), dp(28), dp(20), dp(28))
             })
         } else {
             /*
-             * 每行固定 [COLUMNS] 个【固定尺寸】格子，不用 weight。
+             * 每行固定 [COLUMNS] 个固定尺寸格子，不用 weight。
              * 之前用 weight=1 平分宽度，格子测量宽度先按 0 处理、布局阶段再分配，
              * 在 WindowManager 宿主里测量时序不可控，会出现所有格子挤在一行的问题。
              */
-            val cell = cellSize()
-            apps.chunked(COLUMNS).forEach { rowApps ->
+            val cell = dp(CELL_SIZE_DP)
+            rows.forEach { rowApps ->
                 val row = LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_HORIZONTAL
@@ -229,8 +234,17 @@ class ShakeOverlayPanel(
         }
         titleView.text = if (apps.isEmpty()) context.getString(R.string.label_unfrozen)
         else "${context.getString(R.string.label_unfrozen)} (${apps.size})"
-        // 内容高度变了，等这一帧布局完成再让宿主重新测量窗口
-        post { onLayoutChanged?.invoke() }
+
+        /*
+         * 窗口高度不交给系统自适应：悬浮窗首次挂载时网格还是空的，某些 ROM 上
+         * 内容变高后窗口不会跟着长，后面的行全被窗口边界裁掉。
+         * 这里所有部件都是固定高度，总高度直接算出来显式固化给窗口。
+         */
+        val gridHeight = if (rows.isEmpty()) dp(EMPTY_HEIGHT_DP) else rows.size * dp(CELL_SIZE_DP)
+        (gridContainer.layoutParams as LinearLayout.LayoutParams).height = gridHeight
+        gridContainer.requestLayout()
+        val totalHeight = dp(HEADER_DP) + dp(FOOTER_DP) + gridHeight + 2 // + 两条 1px 分隔线
+        post { onContentHeightChanged?.invoke(totalHeight) }
     }
 
     /**
@@ -277,18 +291,6 @@ class ShakeOverlayPanel(
 
     // endregion
 
-    /**
-     * 单个格子的边长：优先用与首页一致的 [CELL_SIZE_DP]，
-     * 屏幕太窄放不下四列时按可用宽度均分，保证一行只会出现 [COLUMNS] 个格子。
-     */
-    private fun cellSize(): Int {
-        val available = if (gridContainer.width > 0) {
-            gridContainer.width - gridContainer.paddingLeft - gridContainer.paddingRight
-        } else 0
-        val preferred = dp(CELL_SIZE_DP) * COLUMNS
-        return if (available >= preferred) dp(CELL_SIZE_DP) else (available / COLUMNS).coerceAtLeast(dp(48))
-    }
-
     private fun color(attrRes: Int): Int = MaterialColors.getColor(this, attrRes, Color.BLACK)
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
@@ -323,6 +325,13 @@ class ShakeOverlayPanel(
 
         /** 格子边长（dp），与首页网格的行高一致 */
         const val CELL_SIZE_DP = 76
+
+        /** 标题栏 / 底部按钮栏的固定高度（dp） */
+        const val HEADER_DP = 44
+        const val FOOTER_DP = 44
+
+        /** 列表为空时网格区的固定高度（dp） */
+        const val EMPTY_HEIGHT_DP = 80
 
         /** 面板最多展示的应用数量 */
         const val MAX_ITEMS = 10
