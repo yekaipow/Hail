@@ -75,6 +75,7 @@
                 <action android:name="${applicationId}.action.FREEZE_AUTO"/>
                 <action android:name="${applicationId}.action.LOCK"/>
                 <action android:name="${applicationId}.action.LOCK_FREEZE"/>
+                <action android:name="${applicationId}.action.REMOVE_OWNER"/>
 
                 <category android:name="android.intent.category.DEFAULT"/>
             </intent-filter>

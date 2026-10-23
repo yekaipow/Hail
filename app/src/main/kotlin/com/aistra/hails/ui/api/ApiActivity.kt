@@ -32,6 +32,7 @@ import com.aistra.hails.app.HailApi
 import com.aistra.hails.app.HailData
 import com.aistra.hails.app.UnfrozenStore
 import com.aistra.hails.ui.theme.AppTheme
+import com.aistra.hails.utils.HPolicy
 import com.aistra.hails.utils.*
 import com.aistra.hails.work.HWork.setAutoFreeze
 
@@ -41,6 +42,20 @@ class ApiActivity : ComponentActivity() {
         runCatching {
             if (handleAction(intent.action)) finish()
         }.onFailure(::setErrorDialog)
+    }
+
+    /** 解除所有者身份：必须由应用自身执行，adb 无法直接调用 clearDeviceOwnerApp */
+    private fun removeOwner() {
+        when {
+            HPolicy.isDeviceOwnerActive -> {
+                HPolicy.setOrganizationName()
+                HPolicy.removeDeviceOwner()
+            }
+
+            HPolicy.isProfileOwner -> HPolicy.removeProfileOwner()
+            HPolicy.isAdminActive -> HPolicy.removeActiveAdmin()
+            else -> throw IllegalStateException("Not an owner")
+        }
     }
 
     private fun handleAction(action: String?): Boolean {
@@ -68,6 +83,7 @@ class ApiActivity : ComponentActivity() {
             HailApi.ACTION_FREEZE_AUTO -> setAutoFreeze(false)
             HailApi.ACTION_LOCK -> lockScreen(false)
             HailApi.ACTION_LOCK_FREEZE -> lockScreen(true)
+            HailApi.ACTION_REMOVE_OWNER -> removeOwner()
             else -> throw IllegalArgumentException("Unknown action:\n$action")
         }
         return true

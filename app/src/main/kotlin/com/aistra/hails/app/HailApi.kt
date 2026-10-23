@@ -38,6 +38,9 @@ object HailApi {
     /** @since 0.6.0 */
     const val ACTION_LOCK_FREEZE = "${BuildConfig.APPLICATION_ID}.action.LOCK_FREEZE"
 
+    /** 解除设备所有者 / 配置文件所有者 / 管理员身份 */
+    const val ACTION_REMOVE_OWNER = "${BuildConfig.APPLICATION_ID}.action.REMOVE_OWNER"
+
     fun getIntentForPackage(action: String, packageName: String) =
         Intent(action).putExtra(HailData.KEY_PACKAGE, packageName)
 
