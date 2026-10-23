@@ -2,10 +2,7 @@ package com.aistra.hails.services
 
 import android.app.PendingIntent
 import android.app.Service
-import android.content.BroadcastReceiver
-import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Handler
@@ -17,7 +14,6 @@ import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
-import androidx.core.content.ContextCompat
 import com.aistra.hails.R
 import com.aistra.hails.app.AppManager
 import com.aistra.hails.app.HailData
@@ -32,7 +28,6 @@ import com.aistra.hails.utils.HTarget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.lang.reflect.Proxy
@@ -40,54 +35,18 @@ import java.lang.reflect.Proxy
 /**
  * 「划走最近任务即冻结」服务。
  *
- * 触发方式二选一（设置里可切换）：
- * 1. 轮询：定时检查（2-10 秒）
- * 2. 任务栈监听：Shizuku 注册系统 TaskStackListener，任务被移除时实时回调
- *
- * 每次触发都查询「冻结」栏里未冻结的应用是否还在最近任务列表，不在的冻结。
+ * 通过 Shizuku 注册系统 TaskStackListener，任务被移除时实时回调；
+ * 每次回调都查询「冻结」栏里未冻结的应用是否还在最近任务列表，不在的冻结。
  * 每次查询最近任务列表，与上一份快照比对，消失的任务对应的包名如果在「冻结」栏里
  * 且尚未冻结，就冻结它（未锁定的项冻结后自动移出列表）。
- * 任务列表通过 Shizuku / root 的 dumpsys 读取；只亮屏时轮询，灭屏即停。
+ * 任务列表通过 Shizuku / root 的 dumpsys 读取；仅亮屏时响应。
  */
 class RecentTaskFreezeService : Service() {
     private val channelId = javaClass.simpleName
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val handler = Handler(Looper.getMainLooper())
-    private var polling = false
     private var taskStackBinder: Binder? = null
-
-    /** 轮询心跳：查一次任务列表并处理差集 */
-    private val pollRunnable = object : Runnable {
-        override fun run() {
-            if (!polling) return
-            poll()
-            // 每轮重新读取设置，改间隔后无需重启服务即可生效
-            handler.postDelayed(this, HailData.recentTaskFreezeInterval.toPollIntervalMs())
-        }
-    }
-
-    private val screenReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            when (intent.action) {
-                Intent.ACTION_SCREEN_ON -> startPolling()
-                Intent.ACTION_SCREEN_OFF -> stopPolling()
-            }
-        }
-    }
-
-    override fun onCreate() {
-        super.onCreate()
-        ContextCompat.registerReceiver(
-            this,
-            screenReceiver,
-            IntentFilter().apply {
-                addAction(Intent.ACTION_SCREEN_ON)
-                addAction(Intent.ACTION_SCREEN_OFF)
-            },
-            ContextCompat.RECEIVER_NOT_EXPORTED
-        )
-    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         createNotificationChannel()
@@ -97,36 +56,24 @@ class RecentTaskFreezeService : Service() {
             buildNotification(),
             if (HTarget.U) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
         )
-        if (isInteractive()) startPolling()
+        if (registerTaskStackListener()) {
+            HUI.showToast(R.string.recent_task_freeze_debug_listener_ok)
+        } else {
+            HUI.showToast(R.string.recent_task_freeze_debug_listener_failed)
+        }
         return START_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        stopPolling()
         scope.cancel()
-        runCatching { unregisterReceiver(screenReceiver) }
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
 
-    private fun Float.toPollIntervalMs(): Long =
-        (this * 1000).toLong().coerceIn(MIN_POLL_INTERVAL_MS, MAX_POLL_INTERVAL_MS)
-
     private fun isInteractive(): Boolean =
         (getSystemService(POWER_SERVICE) as? PowerManager)?.isInteractive == true
-
-    private fun startPolling() {
-        if (polling) return
-        polling = true
-        handler.post(pollRunnable)
-    }
-
-    private fun stopPolling() {
-        polling = false
-        handler.removeCallbacks(pollRunnable)
-    }
 
     /**
      * 查一次：把「冻结」栏里尚未冻结、但已经不在最近任务列表的应用冻结。
@@ -246,8 +193,5 @@ class RecentTaskFreezeService : Service() {
         /** ITaskStackListener 的 AIDL 描述符 */
         const val TASK_STACK_LISTENER_DESCRIPTOR = "android.app.ITaskStackListener"
 
-        /** 轮询间隔下限 / 上限（毫秒），对应设置里的 2-10 秒 */
-        const val MIN_POLL_INTERVAL_MS = 2000L
-        const val MAX_POLL_INTERVAL_MS = 10000L
     }
 }
