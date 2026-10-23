@@ -47,9 +47,14 @@ class ShakeDetector(
         gravity.fill(0f)
         lastAccelerometerHit = 0L
         lastGyroscopeHit = 0L
-        listening = manager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME)
+        /*
+         * 用 SENSOR_DELAY_UI（约 60ms）而不是 GAME（约 20ms）：
+         * 一次摇晃持续 200ms+，60ms 采样足够抓到 2-3 个峰值，判定不受影响，
+         * 但采样功耗降到约 1/3。这是后台阶段最主要的耗电来源。
+         */
+        listening = manager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_UI)
         // 陀螺仪只用于佐证，注册失败不影响主检测
-        gyroscope?.let { manager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
+        gyroscope?.let { manager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
         return listening
     }
 
