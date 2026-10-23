@@ -19,6 +19,7 @@ import com.aistra.hails.app.HailData
 import com.aistra.hails.app.UnfrozenStore
 import com.aistra.hails.ui.main.MainActivity
 import com.aistra.hails.utils.HShell
+import com.aistra.hails.utils.HUI
 import com.aistra.hails.utils.HShizuku
 import com.aistra.hails.utils.HTarget
 import kotlinx.coroutines.CoroutineScope
@@ -41,7 +42,11 @@ class RecentTaskFreezeService : Service() {
 
     private val taskRemovedReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == ACTION_TASK_REMOVED) onTaskRemoved()
+            if (intent.action == ACTION_TASK_REMOVED) {
+                // 诊断提示：确认系统广播是否送达（含 taskId）
+                HUI.showToast(R.string.recent_task_freeze_debug_received, "${intent.getIntExtra(EXTRA_TASK_ID, -1)}")
+                onTaskRemoved()
+            }
         }
     }
 
@@ -63,6 +68,8 @@ class RecentTaskFreezeService : Service() {
             buildNotification(),
             if (HTarget.U) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
         )
+        // 诊断提示：看到这句说明监听服务已经在跑
+        HUI.showToast(R.string.recent_task_freeze_debug_started)
         return START_STICKY
     }
 
@@ -78,12 +85,20 @@ class RecentTaskFreezeService : Service() {
     /** 触发点：某个任务被划走，检查列表里未冻结的应用还有没有任务在 */
     private fun onTaskRemoved() {
         scope.launch {
-            val running = withContext(Dispatchers.IO) { queryRunningPackages() } ?: return@launch
+            val running = withContext(Dispatchers.IO) { queryRunningPackages() }
+            if (running == null) {
+                HUI.showToast(R.string.recent_task_freeze_debug_failed)
+                return@launch
+            }
             val targets = withContext(Dispatchers.IO) {
                 UnfrozenStore.packages().filter {
                     it != packageName && !AppManager.isAppFrozen(it) && it !in running
                 }
             }
+            HUI.showToast(
+                R.string.recent_task_freeze_debug_result,
+                "${running.size} | ${if (targets.isEmpty()) "-" else targets.joinToString(", ")}"
+            )
             if (targets.isEmpty()) return@launch
             withContext(Dispatchers.IO) {
                 targets.forEach { AppManager.setAppFrozen(it, true) }
@@ -138,5 +153,8 @@ class RecentTaskFreezeService : Service() {
 
         /** 系统隐藏广播：任务被移除（划走最近任务） */
         const val ACTION_TASK_REMOVED = "android.intent.action.TASK_REMOVED"
+
+        /** Intent.EXTRA_TASK_ID（隐藏常量） */
+        const val EXTRA_TASK_ID = "android.intent.extra.TASK_ID"
     }
 }
