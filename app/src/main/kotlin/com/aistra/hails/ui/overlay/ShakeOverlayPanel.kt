@@ -436,7 +436,7 @@ class ShakeOverlayPanel(
         const val EMPTY_HEIGHT_DP = 80
 
         /** 面板最多展示的应用数量 */
-        const val MAX_ITEMS = 10
+        const val MAX_ITEMS = 20
 
         /** 图标解码尺寸上限，过大只会浪费内存 */
         const val ICON_SIZE = 72

@@ -11,7 +11,7 @@ import com.aistra.hails.HailApp.Companion.app
  * 卸载/重装后也能自动反映最新状态。
  */
 object RecentApps {
-    private const val MAX_SIZE = 10
+    private const val MAX_SIZE = 20
     private const val KEY_RECENT_APPS = "recent_apps"
     private const val SEPARATOR = "\n"
 

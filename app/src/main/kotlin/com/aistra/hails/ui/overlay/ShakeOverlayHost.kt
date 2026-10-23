@@ -139,26 +139,28 @@ class ShakeOverlayHost(private val context: Context) {
 
     /**
      * 以自由窗口（Freeform）打开：setLaunchWindowingMode(FREEFORM) + 居中 60%×60% 边界。
-     * 设备未开「强制允许自由窗口」且无此系统功能时，部分 ROM 会拒绝参数或忽略窗口模式，
-     * 统一兜底回退全屏启动。
+     *
+     * 注意 setLaunchWindowingMode 是 @hide API，公开 SDK 编译不可见，只能反射调用；
+     * 反射被系统限制、或设备未开「强制允许自由窗口」导致窗口模式被忽略时，
+     * 统一兜底回退全屏启动，不会崩。
      */
     private fun startActivityFreeform(intent: Intent) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+        // setLaunchBounds 需 API 26+，更低版本没有边界可言，直接全屏
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             context.startActivity(intent)
             return
         }
         try {
             val options = ActivityOptions.makeBasic()
-            // WindowConfiguration.WINDOWING_MODE_FREEFORM 是隐藏常量，但值 5 一直稳定
-            options.setLaunchWindowingMode(WINDOWING_MODE_FREEFORM)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val metrics = context.resources.displayMetrics
-                val width = metrics.widthPixels * 3 / 5
-                val height = metrics.heightPixels * 3 / 5
-                val left = (metrics.widthPixels - width) / 2
-                val top = (metrics.heightPixels - height) / 4
-                options.setLaunchBounds(Rect(left, top, left + width, top + height))
-            }
+            ActivityOptions::class.java
+                .getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType)
+                .invoke(options, WINDOWING_MODE_FREEFORM)
+            val metrics = context.resources.displayMetrics
+            val width = metrics.widthPixels * 3 / 5
+            val height = metrics.heightPixels * 3 / 5
+            val left = (metrics.widthPixels - width) / 2
+            val top = (metrics.heightPixels - height) / 4
+            options.setLaunchBounds(Rect(left, top, left + width, top + height))
             context.startActivity(intent, options.toBundle())
         } catch (e: Exception) {
             context.startActivity(intent)
