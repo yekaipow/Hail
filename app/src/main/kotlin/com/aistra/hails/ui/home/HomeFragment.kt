@@ -90,7 +90,8 @@ class HomeFragment : MainFragment() {
     private val frozenSpanCount: Int
         get() = (resources.displayMetrics.widthPixels / (76 * density)).toInt().coerceAtLeast(4)
 
-    private fun updateFrozenBar() {
+    /** 供 PagerFragment 在批量冻结/解冻后刷新底部栏（锁定项状态可能变化） */
+    fun updateFrozenBar() {
         val binding = _binding ?: return
         if (updatingBar) return
         updatingBar = true
@@ -128,15 +129,20 @@ class HomeFragment : MainFragment() {
     }
 
     /**
-     * 点击：未冻结的直接冻结；已冻结的（锁定项）解冻并启动。
+     * 点击：彩色（未冻结）→ 冻结；灰色（已冻结，锁定项）→ 解冻恢复彩色。
+     * 锁定项冻结后不移除，仅变灰。
      */
     private fun onFrozenItemClick(info: AppInfo) {
         if (AppManager.isAppFrozen(info.packageName)) {
             if (AppManager.setAppFrozen(info.packageName, false)) {
                 UnfrozenStore.add(info.packageName)
-                app.packageManager.getLaunchIntentForPackage(info.packageName)?.let {
-                    startActivity(it)
-                } ?: HUI.showToast(R.string.activity_not_found)
+                // STOP 模式下「解冻」是空操作，需要启动应用来清除 stopped 状态
+                if (HailData.workingMode.endsWith(HailData.STOP)) {
+                    app.packageManager.getLaunchIntentForPackage(info.packageName)?.let {
+                        startActivity(it)
+                    }
+                }
+                updateFrozenBar()
             } else {
                 HUI.showToast(R.string.permission_denied)
             }
@@ -147,9 +153,10 @@ class HomeFragment : MainFragment() {
                 .setPositiveButton(android.R.string.ok, null).show()
             return
         }
-        // 冻结成功后：未锁定的由 AppManager 移出列表，锁定的保留
+        // 冻结成功后：未锁定的由 AppManager 移出列表，锁定的保留并变灰
         if (AppManager.setAppFrozen(info.packageName, true)) {
             HUI.showToast(R.string.msg_freeze, info.name)
+            updateFrozenBar()
         } else {
             HUI.showToast(R.string.permission_denied)
         }
