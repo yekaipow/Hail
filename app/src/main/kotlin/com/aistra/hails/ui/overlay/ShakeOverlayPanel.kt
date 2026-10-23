@@ -237,7 +237,7 @@ class ShakeOverlayPanel(
                     notifyFailure()
                     return@launch
                 }
-                RecentApps.add(app.packageName)
+                // 最近列表由 AppManager.setAppFrozen 在解冻时统一记录，这里无需重复写
                 onOpenApp(app.packageName)
             } else {
                 val frozen = withContext(Dispatchers.IO) { AppManager.setAppFrozen(app.packageName, true) }

@@ -81,6 +81,9 @@ object AppManager {
         if (result && frozen && !UnfrozenStore.isLocked(packageName)) {
             UnfrozenStore.remove(packageName)
         }
+        // 每次解冻都记入「最近」，作为摇一摇悬浮窗的数据源。
+        // 放在这里而不是各个调用点，主界面、悬浮窗、快捷方式、API、通知按钮等入口都能覆盖到。
+        if (result && !frozen) RecentApps.add(packageName)
         return result
     }
 
