@@ -71,6 +71,10 @@ class ShakeOverlayPanel(
     private val titleView = TextView(context)
     private var apps: List<OverlayApp> = emptyList()
 
+    /** 冻结模式开关：关闭时点击图标只打开/解冻；开启后点击即冻结。每次弹出面板自动复位 */
+    private var freezeMode = false
+    private lateinit var freezeModeButton: TextView
+
     /**
      * 内容高度变化后回调，参数是面板应有的精确像素高度。
      * 高度全部由固定尺寸部件算出，不依赖系统对窗口的自适应测量。
@@ -139,17 +143,29 @@ class ShakeOverlayPanel(
         gravity = Gravity.CENTER_VERTICAL
         setPadding(dp(8), 0, dp(8), 0)
         addView(
-            textButton(context.getString(R.string.action_freeze_all), 14f) { setAll(true) },
+            textButton(context.getString(R.string.action_freeze_all), 13f) { setAll(true) },
             LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
         )
         addView(
-            textButton(context.getString(R.string.action_unfreeze_all), 14f) { setAll(false) },
+            textButton(context.getString(R.string.action_unfreeze_all), 13f) { setAll(false) },
             LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
         )
+        freezeModeButton = textButton(context.getString(R.string.shake_freeze_mode), 13f) {
+            freezeMode = !freezeMode
+            styleFreezeModeButton()
+        }
+        styleFreezeModeButton()
+        addView(freezeModeButton, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
         addView(
-            textButton(context.getString(R.string.shake_lock_screen), 14f) { lockScreen() },
+            textButton(context.getString(R.string.shake_lock_screen), 13f) { lockScreen() },
             LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
         )
+    }
+
+    /** 冻结模式按钮：激活时主色加粗，未激活时弱化，让当前点击行为一眼可辨 */
+    private fun styleFreezeModeButton() {
+        freezeModeButton.setTextColor(if (freezeMode) colorPrimary else colorOnSurfaceVariant)
+        freezeModeButton.typeface = if (freezeMode) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
     }
 
     private fun buildDivider() = View(context).apply {
@@ -265,29 +281,35 @@ class ShakeOverlayPanel(
     }
 
     /**
-     * 点击语义：冻结 → 解冻并打开；未冻结 → 直接冻结（不打开）。
-     * 只有真正打开应用时才计入「最近打开」。
+     * 点击语义：
+     * - 冻结模式开：未冻结 → 直接冻结（不打开）；已冻结 → 提示已冻结。
+     * - 冻结模式关（默认）：已冻结 → 解冻并打开；未冻结 → 只打开。
      */
     private fun onCellClick(app: OverlayApp) {
         scope.launch {
-            if (app.frozen) {
-                val unfrozen = withContext(Dispatchers.IO) {
-                    AppManager.setAppFrozen(app.packageName, false).also {
-                        if (it) UnfrozenStore.add(app.packageName)
+            when {
+                app.frozen && freezeMode -> HUI.showToast(R.string.msg_freeze, app.label)
+                app.frozen -> {
+                    val unfrozen = withContext(Dispatchers.IO) {
+                        AppManager.setAppFrozen(app.packageName, false).also {
+                            if (it) UnfrozenStore.add(app.packageName)
+                        }
                     }
+                    if (!unfrozen) {
+                        notifyFailure()
+                        return@launch
+                    }
+                    onOpenApp(app.packageName)
                 }
-                if (!unfrozen) {
-                    notifyFailure()
-                    return@launch
+                freezeMode -> {
+                    // 冻结成功后：未锁定的项由 AppManager 移出列表，锁定的保留
+                    val frozen = withContext(Dispatchers.IO) { AppManager.setAppFrozen(app.packageName, true) }
+                    if (frozen) {
+                        HUI.showToast(R.string.msg_freeze, app.label)
+                        reload()
+                    } else notifyFailure()
                 }
-                onOpenApp(app.packageName)
-            } else {
-                // 冻结成功后：未锁定的项由 AppManager 移出列表，锁定的保留
-                val frozen = withContext(Dispatchers.IO) { AppManager.setAppFrozen(app.packageName, true) }
-                if (frozen) {
-                    HUI.showToast(R.string.msg_freeze, app.label)
-                    reload()
-                } else notifyFailure()
+                else -> onOpenApp(app.packageName)
             }
         }
     }
