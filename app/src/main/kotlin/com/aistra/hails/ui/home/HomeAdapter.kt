@@ -13,5 +13,12 @@ class HomeAdapter(fragment: HomeFragment) : FragmentStateAdapter(fragment) {
 
     /** 用标签 ID 作为稳定 ID，增删标签时不会重建其它页面 */
     override fun getItemId(position: Int): Long =
-        tags.getOrNull(position)?.second?.toLong()?.shl(1) ?: Long.MIN_VALUE
+        tags.getOrNull(position)?.second?.toLong()?.shl(1) ?: UNFROZEN_PAGE_ID
+
+    override fun containsItem(itemId: Long): Boolean =
+        itemId == UNFROZEN_PAGE_ID || tags.any { it.second.toLong().shl(1) == itemId }
+
+    private companion object {
+        const val UNFROZEN_PAGE_ID = Long.MIN_VALUE
+    }
 }

@@ -108,7 +108,16 @@ jobs:
       - name: Build release APK
         id: build
         run: |
-          ./gradlew assembleRelease $GRADLE_ARGS
+          set +e
+          ./gradlew assembleRelease $GRADLE_ARGS 2>&1 | tee gradle.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            # 把编译错误转成 annotation，便于在 Checks 页直接看到
+            grep -E "^e: |error:|FAILURE:|What went wrong|Caused by" gradle.log | head -40 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+            exit "$status"
+          fi
           META=app/build/outputs/apk/release/output-metadata.json
           APK=$(jq -r '.elements[0].outputFile' "$META")
           echo "apk=$APK" >> "$GITHUB_OUTPUT"
