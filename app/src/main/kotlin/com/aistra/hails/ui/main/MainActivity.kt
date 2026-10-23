@@ -33,6 +33,16 @@ class MainActivity : AppCompatActivity(), NavController.OnDestinationChangedList
     lateinit var fab: ExtendedFloatingActionButton
     lateinit var appbar: AppBarLayout
 
+    override fun onResume() {
+        super.onResume()
+        // 每次回到前台同步「从最近任务隐藏」设置（task 可能变化）
+        runCatching {
+            getSystemService(ActivityManager::class.java)
+                .appTasks.firstOrNull()
+                ?.setExcludeFromRecents(HailData.hideFromRecents)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)

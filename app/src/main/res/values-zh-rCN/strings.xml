@@ -177,6 +177,9 @@
     <string name="recent_task_freeze_debug_frozen">已冻结：%1$s</string>
     <string name="recent_task_freeze_requires">需要 Shizuku 或 root 模式</string>
     <string name="shake_floating_ball">悬浮球</string>
+    <string name="floating_ball_size">悬浮球大小</string>
+    <string name="hide_from_recents">从最近任务隐藏</string>
+    <string name="hide_from_recents_desc">Hail 不会出现在最近任务列表中</string>
     <string name="shake_floating_ball_desc">显示悬浮球，点击开关悬浮窗</string>
     <string name="shake_floating_ball_long_press">长按动作</string>
     <string name="msg_freeze_all">已全部冻结</string>

@@ -179,6 +179,9 @@
     <string name="recent_task_freeze_debug_frozen">Frozen: %1$s</string>
     <string name="recent_task_freeze_requires">Needs Shizuku or root mode</string>
     <string name="shake_floating_ball">Floating ball</string>
+    <string name="floating_ball_size">Floating ball size</string>
+    <string name="hide_from_recents">Hide from recents</string>
+    <string name="hide_from_recents_desc">Hail will not appear in the recent tasks list</string>
     <string name="shake_floating_ball_desc">Show a floating ball to toggle the overlay panel</string>
     <string name="shake_floating_ball_long_press">Long-press action</string>
     <string name="msg_freeze_all">Froze all pending apps</string>

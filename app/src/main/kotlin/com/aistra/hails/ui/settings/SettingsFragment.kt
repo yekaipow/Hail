@@ -83,6 +83,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
         val shakeOverlay = rememberPreferenceState(HailData.SHAKE_OVERLAY, false)
         val shakeFloatingBall = rememberPreferenceState(HailData.SHAKE_FLOATING_BALL, false)
         val recentTaskFreeze = rememberPreferenceState(HailData.RECENT_TASK_FREEZE, false)
+        val hideFromRecents = rememberPreferenceState(HailData.HIDE_FROM_RECENTS, false)
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             listPreference(
                 key = HailData.WORKING_MODE,
@@ -143,6 +144,15 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 titleId = R.string.grayscale_icon,
                 icon = Icons.Outlined.FilterBAndW
             )
+            item(key = HailData.HIDE_FROM_RECENTS, contentType = "SwitchPreference") {
+                SwitchPreference(
+                    value = hideFromRecents.value,
+                    onValueChange = { hideFromRecents.value = it },
+                    title = { Text(text = stringResource(R.string.hide_from_recents)) },
+                    summary = { Text(text = stringResource(R.string.hide_from_recents_desc)) },
+                    icon = { Icon(imageVector = Icons.Outlined.VisibilityOff, contentDescription = null) }
+                )
+            }
             switchPreference(
                 key = HailData.COMPACT_ICON,
                 defaultValue = false,
@@ -284,6 +294,16 @@ class SettingsFragment : MainFragment(), MenuProvider {
                     icon = { Icon(imageVector = Icons.Outlined.Adjust, contentDescription = null) }
                 )
             }
+            sliderPreference(
+                key = HailData.FLOATING_BALL_SIZE,
+                defaultValue = 44f,
+                title = { Text(text = stringResource(R.string.floating_ball_size)) },
+                valueRange = 1f..50f,
+                valueSteps = 49,
+                enabled = { shakeFloatingBall.value },
+                icon = { Icon(imageVector = Icons.Outlined.PhotoSizeSelectSmall, contentDescription = null) },
+                valueText = { Text(text = "${it.toInt()}dp") }
+            )
             listPreference(
                 key = HailData.SHAKE_FLOATING_BALL_ACTION,
                 defaultValue = HailData.ACTION_FREEZE_ALL,

@@ -53,6 +53,14 @@ class FloatingBallService : Service() {
         }
     }
 
+    private val prefListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        // 大小改变后重建悬浮球，位置从 HailData 读回，不会跳位
+        if (key == HailData.FLOATING_BALL_SIZE && floatingBall != null) {
+            detachFloatingBall()
+            attachFloatingBall()
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -65,6 +73,8 @@ class FloatingBallService : Service() {
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
         attachFloatingBall()
+        androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+            .registerOnSharedPreferenceChangeListener(prefListener)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -85,6 +95,10 @@ class FloatingBallService : Service() {
     }
 
     override fun onDestroy() {
+        runCatching {
+            androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+                .unregisterOnSharedPreferenceChangeListener(prefListener)
+        }
         detachFloatingBall()
         runCatching { unregisterReceiver(screenReceiver) }
         panelHost.release()
@@ -96,7 +110,7 @@ class FloatingBallService : Service() {
         if (floatingBall != null) return
         if (!Settings.canDrawOverlays(this)) return
         val density = resources.displayMetrics.density
-        val size = (BALL_SIZE_DP * density).toInt()
+        val size = (HailData.floatingBallSize * density).toInt().coerceAtLeast(1)
         val metrics = resources.displayMetrics
         val ball = ImageView(this).apply {
             setImageDrawable(applicationInfo.loadIcon(packageManager))
@@ -224,7 +238,6 @@ class FloatingBallService : Service() {
 
     private companion object {
         const val NOTIFICATION_ID = 102
-        const val BALL_SIZE_DP = 44
         const val BALL_MARGIN_DP = 16
         const val BALL_LONG_PRESS_MS = 500L
 

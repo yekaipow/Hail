@@ -120,6 +120,8 @@ object HailData {
         )
     const val AUTO_FREEZE_AFTER_LOCK = "auto_freeze_after_lock"
     const val RECENT_TASK_FREEZE = "recent_task_freeze"
+    const val HIDE_FROM_RECENTS = "hide_from_recents"
+    const val FLOATING_BALL_SIZE = "floating_ball_size_f"
     const val AUTO_FREEZE_DELAY = "auto_freeze_delay_f"
     const val SKIP_WHILE_CHARGING = "skip_while_charging"
     const val SKIP_FOREGROUND_APP = "skip_foreground_app"
@@ -160,6 +162,14 @@ object HailData {
     var autoFreezeAfterLock
         get() = sp.getBoolean(AUTO_FREEZE_AFTER_LOCK, false)
         set(value) = sp.edit { putBoolean(AUTO_FREEZE_AFTER_LOCK, value) }
+
+    /** 是否把自身从最近任务列表隐藏 */
+    var hideFromRecents
+        get() = sp.getBoolean(HIDE_FROM_RECENTS, false)
+        set(value) = sp.edit { putBoolean(HIDE_FROM_RECENTS, value) }
+
+    /** 悬浮球直径（dp），1-50 */
+    val floatingBallSize get() = sp.getFloat(FLOATING_BALL_SIZE, 44f).coerceIn(1f, 50f)
 
     /** 划走最近任务即冻结「冻结」栏里未冻结的应用 */
     var recentTaskFreeze
