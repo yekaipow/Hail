@@ -19,6 +19,7 @@ import kotlin.math.sqrt
  * 幅值超过阈值即视为有意摇晃。灵敏度 0..1 线性映射到 [LIGHT_THRESHOLD]..[HEAVY_THRESHOLD]
  * m/s²（灵敏度越高阈值越低，越容易触发）。
  *
+ * 采样率用 [SensorManager.SENSOR_DELAY_NORMAL]（约 200ms），把后台功耗压到最低。
  * 何时注册 / 注销由调用方按屏幕与锁屏状态控制，以进一步降低耗电。
  */
 class ShakeDetector(
@@ -48,8 +49,9 @@ class ShakeDetector(
         if (listening) return true
         gravity.fill(0f)
         lastShakeTime = 0L
-        // SENSOR_DELAY_UI（约 60ms）：一次摇晃持续 200ms 以上，足够抓到峰值，功耗远低于 GAME
-        listening = manager.registerListener(this, target, SensorManager.SENSOR_DELAY_UI)
+        // SENSOR_DELAY_NORMAL（约 200ms / 5Hz）：最省电的采样率；
+        // 摇晃持续 200ms 以上时仍能采到峰值，但短促的甩动可能漏检
+        listening = manager.registerListener(this, target, SensorManager.SENSOR_DELAY_NORMAL)
         return listening
     }
 
