@@ -1,6 +1,7 @@
 package com.aistra.hails.ui.overlay
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.ColorMatrix
@@ -297,24 +298,36 @@ class ShakeOverlayPanel(
         /** 网格列数，10 个应用正好排成三行 */
         const val COLUMNS = 4
 
+        /** 面板最多展示的应用数量 */
+        const val MAX_ITEMS = 10
+
         /** 图标解码尺寸上限，过大只会浪费内存 */
         const val ICON_SIZE = 72
 
-        /** 按「最近打开」顺序读取，卸载或读不到的应用直接跳过 */
+        /**
+         * 优先展示最近解冻/打开的 [MAX_ITEMS] 个应用；还没有任何记录时
+         * （刚更新完、还没解冻过应用）回退到首页应用，避免面板空白。
+         */
         fun loadApps(context: Context): List<OverlayApp> {
             val packageManager = context.packageManager
-            return RecentApps.list().mapNotNull { packageName ->
+            val recent = resolve(packageManager, RecentApps.list())
+            val candidates = if (recent.isNotEmpty()) recent
+            else resolve(packageManager, HailData.checkedList.map { it.packageName })
+            return candidates.take(MAX_ITEMS)
+        }
+
+        /** 按传入顺序解析，卸载或读不到的应用直接跳过 */
+        private fun resolve(packageManager: PackageManager, packageNames: List<String>): List<OverlayApp> =
+            packageNames.mapNotNull { packageName ->
                 val applicationInfo = HPackages.getApplicationInfoOrNull(packageName) ?: return@mapNotNull null
-                val icon = runCatching {
-                    applicationInfo.loadIcon(packageManager).toBitmap(ICON_SIZE, ICON_SIZE)
-                }.getOrNull()
                 OverlayApp(
                     packageName = packageName,
                     label = applicationInfo.loadLabel(packageManager).toString(),
-                    icon = icon,
+                    icon = runCatching {
+                        applicationInfo.loadIcon(packageManager).toBitmap(ICON_SIZE, ICON_SIZE)
+                    }.getOrNull(),
                     frozen = AppManager.isAppFrozen(packageName)
                 )
             }
-        }
     }
 }
