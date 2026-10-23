@@ -7,6 +7,7 @@
     <string name="title_settings">设置</string>
     <string name="title_about">关于</string>
     <string name="label_default">默认</string>
+    <string name="label_unfrozen">冻结</string>
     <string name="label_version">版本</string>
     <string name="label_time">安装时间</string>
     <string name="action_telegram">Telegram 群组</string>
@@ -32,6 +33,7 @@
     <string name="action_export_clipboard">导出到剪切板</string>
     <string name="action_import_clipboard">从剪切板导入</string>
     <string name="action_remove_home">从首页中移除</string>
+    <string name="action_remove_from_list">从列表中移除</string>
     <string name="action_unfreeze_remove_home">解冻并从首页中移除</string>
     <string name="action_deselect">取消选择</string>
     <string name="action_undo">撤销</string>

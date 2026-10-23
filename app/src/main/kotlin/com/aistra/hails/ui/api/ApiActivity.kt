@@ -30,6 +30,7 @@ import com.aistra.hails.app.AppInfo
 import com.aistra.hails.app.AppManager
 import com.aistra.hails.app.HailApi
 import com.aistra.hails.app.HailData
+import com.aistra.hails.app.UnfrozenStore
 import com.aistra.hails.ui.theme.AppTheme
 import com.aistra.hails.utils.*
 import com.aistra.hails.work.HWork.setAutoFreeze
@@ -189,6 +190,7 @@ class ApiActivity : ComponentActivity() {
     private fun launchApp(pkg: String, tagId: Int? = null) {
         if (tagId != null) setListFrozen(false, HailData.checkedList.filter { tagId in it.tagIdList })
         if (AppManager.isAppFrozen(pkg) && AppManager.setAppFrozen(pkg, false)) {
+            UnfrozenStore.add(pkg)
             app.setAutoFreezeService()
         }
         if (HailData.workingMode == HailData.MODE_ISLAND_HIDE) {

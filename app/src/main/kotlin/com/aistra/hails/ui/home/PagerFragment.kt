@@ -36,6 +36,7 @@ import com.aistra.hails.app.AppManager
 import com.aistra.hails.app.HailApi
 import com.aistra.hails.app.HailApi.addTag
 import com.aistra.hails.app.HailData
+import com.aistra.hails.app.UnfrozenStore
 import com.aistra.hails.databinding.DialogInputBinding
 import com.aistra.hails.databinding.FragmentPagerBinding
 import com.aistra.hails.extensions.*
@@ -411,6 +412,8 @@ class PagerFragment : MainFragment(), PagerAdapter.OnItemClickListener, PagerAda
 
     private fun launchApp(packageName: String) {
         if (AppManager.isAppFrozen(packageName) && AppManager.setAppFrozen(packageName, false)) {
+            // 手动解冻并打开，加入首页「冻结」页，便于下次一键冻回去
+            UnfrozenStore.add(packageName)
             updateCurrentList()
         }
         if (HailData.workingMode == HailData.MODE_ISLAND_HIDE) {

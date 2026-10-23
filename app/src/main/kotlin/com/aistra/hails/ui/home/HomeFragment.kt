@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.core.view.isVisible
 import com.aistra.hails.app.AppInfo
 import com.aistra.hails.app.HailData.tags
 import com.aistra.hails.databinding.FragmentHomeBinding
@@ -25,10 +24,10 @@ class HomeFragment : MainFragment() {
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
         _binding = FragmentHomeBinding.inflate(inflater, container, false)
-        if (tags.size == 1) binding.tabs.isVisible = false
         binding.pager.adapter = HomeAdapter(this)
         TabLayoutMediator(binding.tabs, binding.pager) { tab, position ->
-            tab.text = tags[position].first
+            // 最后一个页签是固定的「冻结」页
+            tab.text = tags.getOrNull(position)?.first ?: getString(R.string.label_unfrozen)
         }.attach()
         binding.tabs.applyDefaultInsetter { paddingRelative(isRtl, start = !activity.isLandscape, end = true) }
         return binding.root
