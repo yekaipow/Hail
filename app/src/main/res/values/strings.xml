@@ -173,9 +173,8 @@
     <string name="shake_overlay_empty">No apps waiting here</string>
     <string name="recent_task_freeze">Freeze when swiped from recents</string>
     <string name="recent_task_freeze_debug_started">Swipe-freeze service started</string>
-    <string name="recent_task_freeze_debug_received">TASK_REMOVED received (taskId=%1$s)</string>
     <string name="recent_task_freeze_debug_failed">Failed to read recent tasks (check Shizuku/root)</string>
-    <string name="recent_task_freeze_debug_result">Tasks: %1$s</string>
+    <string name="recent_task_freeze_debug_frozen">Frozen: %1$s</string>
     <string name="recent_task_freeze_desc">Freeze unfrozen apps in the freeze bar once their task is swiped away</string>
     <string name="recent_task_freeze_requires">Needs Shizuku or root mode</string>
     <string name="shake_floating_ball">Floating ball</string>
