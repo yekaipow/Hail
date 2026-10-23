@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.aistra.hails.R
 import com.aistra.hails.app.AppInfo
 import com.aistra.hails.app.HailData
+import com.aistra.hails.app.UnfrozenStore
 import com.aistra.hails.utils.AppIconCache
 import com.aistra.hails.utils.HPackages.myUserId
 import kotlinx.coroutines.Job
@@ -29,6 +30,8 @@ class FrozenBarAdapter(
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val info = currentList[position]
+        val locked = UnfrozenStore.isLocked(info.packageName)
+        val frozen = info.state == AppInfo.State.FROZEN
         holder.itemView.run {
             setOnClickListener { onClick(info) }
             setOnLongClickListener {
@@ -37,12 +40,19 @@ class FrozenBarAdapter(
             }
             findViewById<ImageView>(R.id.app_icon).run {
                 info.applicationInfo?.let {
-                    loadIconJob = AppIconCache.loadIconBitmapAsync(context, it, myUserId, this, false)
+                    loadIconJob = AppIconCache.loadIconBitmapAsync(
+                        context, it, myUserId, this, HailData.grayscaleIcon && frozen
+                    )
                 } ?: setImageDrawable(context.packageManager.defaultActivityIcon)
             }
             findViewById<TextView>(R.id.app_name).run {
-                text = info.name
+                text = buildString {
+                    if (locked) append("\uD83D\uDD12")
+                    if (frozen) append("\u2744\uFE0F")
+                    append(info.name)
+                }
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, HailData.homeFontSize.coerceAtMost(14f))
+                isEnabled = !frozen || locked
             }
         }
     }
@@ -58,6 +68,8 @@ class FrozenBarAdapter(
             oldItem == newItem
 
         override fun areContentsTheSame(oldItem: AppInfo, newItem: AppInfo): Boolean =
-            oldItem.name == newItem.name
+            oldItem.name == newItem.name &&
+                    oldItem.state == newItem.state &&
+                    UnfrozenStore.isLocked(oldItem.packageName) == UnfrozenStore.isLocked(newItem.packageName)
     }
 }

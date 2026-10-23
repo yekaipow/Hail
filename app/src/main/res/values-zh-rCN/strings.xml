@@ -81,6 +81,8 @@
     <string name="msg_extract_apk">已提取至：%s</string>
     <string name="msg_freeze">已冻结：%s</string>
     <string name="msg_unfreeze">已解冻：%s</string>
+    <string name="msg_locked">已锁定在冻结栏：%s</string>
+    <string name="msg_unlocked">已解锁：%s</string>
     <plurals name="deferred_task_entry">
         <item quantity="other">%d 分钟</item>
     </plurals>

@@ -7,7 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.core.view.isVisible
 import androidx.preference.PreferenceManager
-import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.GridLayoutManager
 import com.aistra.hails.HailApp.Companion.app
 import com.aistra.hails.R
 import com.aistra.hails.app.AppInfo
@@ -37,7 +37,7 @@ class HomeFragment : MainFragment() {
     private var updatingBar = false
     private val sp by lazy { PreferenceManager.getDefaultSharedPreferences(app) }
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == UnfrozenStore.KEY) updateFrozenBar()
+        if (key == UnfrozenStore.KEY || key == UnfrozenStore.KEY_LOCKED) updateFrozenBar()
     }
 
     override fun onCreateView(
@@ -51,14 +51,18 @@ class HomeFragment : MainFragment() {
         }.attach()
         binding.tabs.applyDefaultInsetter { paddingRelative(isRtl, start = !activity.isLandscape, end = true) }
 
-        // 底部常驻「冻结」区
-        frozenAdapter = FrozenBarAdapter(::freezeApp, ::showFrozenMenu)
+        // 底部常驻「冻结」区，多行排布
+        frozenAdapter = FrozenBarAdapter(::onFrozenItemClick, ::toggleLock)
         binding.frozenList.apply {
-            layoutManager = LinearLayoutManager(activity, LinearLayoutManager.HORIZONTAL, false)
+            layoutManager = GridLayoutManager(activity, frozenSpanCount)
             adapter = frozenAdapter
         }
         binding.frozenBar.applyDefaultInsetter {
             paddingRelative(isRtl, start = !isLandscape, end = true, bottom = true)
+        }
+        // 底部区高度变化时校正 FAB 位置，保证悬浮按钮不被遮挡
+        binding.frozenBar.addOnLayoutChangeListener { v, _, top, _, bottom, _, oldTop, _, oldBottom ->
+            if (top != oldTop || bottom != oldBottom) adjustFab(v.isVisible)
         }
         sp.registerOnSharedPreferenceChangeListener(prefListener)
         updateFrozenBar()
@@ -80,6 +84,12 @@ class HomeFragment : MainFragment() {
         _binding = null
     }
 
+    private val density get() = resources.displayMetrics.density
+
+    /** 按屏宽计算每行图标数 */
+    private val frozenSpanCount: Int
+        get() = (resources.displayMetrics.widthPixels / (76 * density)).toInt().coerceAtLeast(4)
+
     private fun updateFrozenBar() {
         val binding = _binding ?: return
         if (updatingBar) return
@@ -91,31 +101,53 @@ class HomeFragment : MainFragment() {
                 it.applicationInfo != null
             }.sortedWith(NameComparator)
             val visible = list.isNotEmpty()
-            binding.frozenBar.isVisible = visible
             binding.frozenTitle.text =
                 if (visible) "${getString(R.string.label_unfrozen)} (${list.size})"
                 else getString(R.string.label_unfrozen)
+            if (visible) applyFrozenListHeight(list.size)
+            binding.frozenBar.isVisible = visible
             frozenAdapter.submitList(list)
-            // 底部区出现时把 FAB 上移，避免遮挡小图标
-            binding.frozenBar.post { adjustFab(visible) }
         } finally {
             updatingBar = false
+        }
+    }
+
+    /** 多行显示，最多 3 行，超出后在区域内滚动 */
+    private fun applyFrozenListHeight(count: Int) {
+        val rows = ((count + frozenSpanCount - 1) / frozenSpanCount).coerceAtMost(MAX_ROWS)
+        binding.frozenList.layoutParams = binding.frozenList.layoutParams.apply {
+            height = (rows * ITEM_HEIGHT_DP * density).toInt()
         }
     }
 
     private fun adjustFab(barVisible: Boolean) {
         val binding = _binding ?: return
         val offset = if (barVisible) binding.frozenBar.height else 0
+        // 只上移，不改变层级：FAB 本身位于内容层之上，始终不被底部区遮挡
         activity.fab.translationY = -offset.toFloat()
     }
 
-    /** 点击底部小图标：直接冻结，冻结成功后自动从该区域消失 */
-    private fun freezeApp(info: AppInfo) {
+    /**
+     * 点击：未冻结的直接冻结；已冻结的（锁定项）解冻并启动。
+     */
+    private fun onFrozenItemClick(info: AppInfo) {
+        if (AppManager.isAppFrozen(info.packageName)) {
+            if (AppManager.setAppFrozen(info.packageName, false)) {
+                UnfrozenStore.add(info.packageName)
+                app.packageManager.getLaunchIntentForPackage(info.packageName)?.let {
+                    startActivity(it)
+                } ?: HUI.showToast(R.string.activity_not_found)
+            } else {
+                HUI.showToast(R.string.permission_denied)
+            }
+            return
+        }
         if (HailData.workingMode == HailData.MODE_DEFAULT) {
             MaterialAlertDialogBuilder(requireContext()).setMessage(R.string.msg_guide)
                 .setPositiveButton(android.R.string.ok, null).show()
             return
         }
+        // 冻结成功后：未锁定的由 AppManager 移出列表，锁定的保留
         if (AppManager.setAppFrozen(info.packageName, true)) {
             HUI.showToast(R.string.msg_freeze, info.name)
         } else {
@@ -123,20 +155,15 @@ class HomeFragment : MainFragment() {
         }
     }
 
-    private fun showFrozenMenu(info: AppInfo) {
-        MaterialAlertDialogBuilder(requireContext()).setTitle(info.name).setItems(
-            arrayOf(
-                getString(R.string.action_launch),
-                getString(R.string.action_remove_from_list)
-            )
-        ) { _, which ->
-            when (which) {
-                0 -> app.packageManager.getLaunchIntentForPackage(info.packageName)?.let {
-                    startActivity(it)
-                } ?: HUI.showToast(R.string.activity_not_found)
+    /** 长按：锁定 / 解锁，锁定后冻结不再移出底部区 */
+    private fun toggleLock(info: AppInfo) {
+        val locked = UnfrozenStore.isLocked(info.packageName)
+        UnfrozenStore.setLocked(info.packageName, !locked)
+        HUI.showToast(if (locked) R.string.msg_unlocked else R.string.msg_locked, info.name)
+    }
 
-                1 -> UnfrozenStore.remove(info.packageName)
-            }
-        }.setNegativeButton(android.R.string.cancel, null).show()
+    private companion object {
+        const val MAX_ROWS = 3
+        const val ITEM_HEIGHT_DP = 72
     }
 }

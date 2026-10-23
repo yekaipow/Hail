@@ -77,8 +77,10 @@ object AppManager {
 
             else -> false
         }
-        // 冻结成功后从「冻结」页（已解冻列表）移除
-        if (result && frozen) UnfrozenStore.remove(packageName)
+        // 冻结成功后从底部「冻结」栏移除；锁定的应用保留
+        if (result && frozen && !UnfrozenStore.isLocked(packageName)) {
+            UnfrozenStore.remove(packageName)
+        }
         return result
     }
 
