@@ -1,8 +1,11 @@
 package com.aistra.hails.ui.home
 
+import android.animation.ValueAnimator
+import android.annotation.SuppressLint
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.view.isVisible
@@ -23,12 +26,18 @@ import com.aistra.hails.extensions.paddingRelative
 import com.aistra.hails.ui.main.MainFragment
 import com.aistra.hails.utils.HUI
 import com.aistra.hails.utils.NameComparator
+import kotlin.math.abs
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.tabs.TabLayoutMediator
 
+@SuppressLint("ClickableViewAccessibility")
 class HomeFragment : MainFragment() {
     var multiselect: Boolean = false
     val selectedList: MutableList<AppInfo> = mutableListOf()
+
+    /** 底部「冻结」区是否展开；每次进入页面默认折叠 */
+    private var frozenExpanded = false
+    private var frozenTouchY = 0f
     private var _binding: FragmentHomeBinding? = null
     val binding get() = _binding!!
     private lateinit var frozenAdapter: FrozenBarAdapter
@@ -57,6 +66,9 @@ class HomeFragment : MainFragment() {
             layoutManager = GridLayoutManager(activity, frozenSpanCount)
             adapter = frozenAdapter
         }
+        // 标题栏手势：上滑展开 / 下拉折叠；列表滚动到顶时下拉也能折叠
+        binding.frozenTitle.setOnTouchListener(frozenTitleTouchListener)
+        binding.frozenList.setOnTouchListener(frozenListTouchListener)
         binding.frozenBar.applyDefaultInsetter {
             paddingRelative(isRtl, start = !isLandscape, end = true, bottom = true)
         }
@@ -101,9 +113,7 @@ class HomeFragment : MainFragment() {
                 it.applicationInfo != null
             }.sortedWith(NameComparator)
             val visible = list.isNotEmpty()
-            binding.frozenTitle.text =
-                if (visible) "${getString(R.string.label_unfrozen)} (${list.size})"
-                else getString(R.string.label_unfrozen)
+            updateFrozenTitle(binding, list.size)
             if (visible) applyFrozenListHeight(list.size)
             binding.frozenBar.isVisible = visible
             frozenAdapter.submitList(list)
@@ -112,12 +122,73 @@ class HomeFragment : MainFragment() {
         }
     }
 
-    /** 多行显示，最多 3 行，超出后在区域内滚动 */
+    /** 多行显示，最多 3 行，超出后在区域内滚动；折叠时高度为 0 */
     private fun applyFrozenListHeight(count: Int) {
         val rows = ((count + frozenSpanCount - 1) / frozenSpanCount).coerceAtMost(MAX_ROWS)
         binding.frozenList.layoutParams = binding.frozenList.layoutParams.apply {
-            height = (rows * ITEM_HEIGHT_DP * density).toInt()
+            height = if (frozenExpanded) (rows * ITEM_HEIGHT_DP * density).toInt() else 0
         }
+    }
+
+    /** 标题文本：名称 + 数量 + 状态箭头（▴ 可上滑展开，▾ 可下拉收起） */
+    private fun updateFrozenTitle(binding: FragmentHomeBinding, count: Int) {
+        binding.frozenTitle.text = buildString {
+            append(
+                if (count > 0) "${getString(R.string.label_unfrozen)} ($count)"
+                else getString(R.string.label_unfrozen)
+            )
+            append(if (frozenExpanded) " ▾" else " ▴")
+        }
+    }
+
+    /** 展开 / 折叠底部列表，高度动画过渡；FAB 位置由 frozenBar 的布局监听自动校正 */
+    private fun animateFrozenList(expand: Boolean) {
+        val binding = _binding ?: return
+        val count = frozenAdapter.itemCount
+        if (frozenExpanded == expand || count == 0) return
+        frozenExpanded = expand
+        val rows = ((count + frozenSpanCount - 1) / frozenSpanCount).coerceAtMost(MAX_ROWS)
+        val target = if (expand) (rows * ITEM_HEIGHT_DP * density).toInt() else 0
+        val list = binding.frozenList
+        ValueAnimator.ofInt(list.layoutParams.height, target).apply {
+            duration = 180
+            addUpdateListener {
+                list.layoutParams = list.layoutParams.apply { height = it.animatedValue as Int }
+            }
+            start()
+        }
+        updateFrozenTitle(binding, count)
+    }
+
+    /** 标题栏：上滑展开，下拉折叠 */
+    private val frozenTitleTouchListener = View.OnTouchListener { _, event ->
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> frozenTouchY = event.rawY
+            MotionEvent.ACTION_MOVE -> {
+                val dy = event.rawY - frozenTouchY
+                if (abs(dy) > SWIPE_DP * density) {
+                    frozenTouchY = event.rawY
+                    animateFrozenList(expand = dy < 0)
+                }
+            }
+        }
+        true
+    }
+
+    /** 列表：滚动到顶时向下拉折叠；其余手势交给列表正常滚动与点击 */
+    private val frozenListTouchListener = View.OnTouchListener { _, event ->
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> frozenTouchY = event.rawY
+            MotionEvent.ACTION_MOVE -> {
+                val binding = _binding ?: return@OnTouchListener false
+                val dy = event.rawY - frozenTouchY
+                if (dy > SWIPE_DP * density && !binding.frozenList.canScrollVertically(-1)) {
+                    animateFrozenList(false)
+                    return@OnTouchListener true
+                }
+            }
+        }
+        false
     }
 
     private fun adjustFab(barVisible: Boolean) {
@@ -165,5 +236,8 @@ class HomeFragment : MainFragment() {
     private companion object {
         const val MAX_ROWS = 3
         const val ITEM_HEIGHT_DP = 72
+
+        /** 触发展开 / 折叠的滑动距离 */
+        const val SWIPE_DP = 48
     }
 }
