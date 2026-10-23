@@ -171,6 +171,10 @@
     <string name="shake_overlay_no_sensor">Accelerometer not found, shake detection is unavailable</string>
     <string name="shake_overlay_start_failed">Unable to start the shake service, please enable it again in settings</string>
     <string name="shake_overlay_empty">No apps waiting here</string>
+    <string name="shake_floating_ball">Floating ball</string>
+    <string name="shake_floating_ball_desc">Show a floating ball to toggle the overlay panel</string>
+    <string name="shake_floating_ball_long_press">Long-press action</string>
+    <string name="msg_freeze_all">Froze all pending apps</string>
     <string name="shake_lock_screen">Lock screen</string>
     <string name="shake_freeform_mode">Freeform</string>
     <string name="shake_freeform_unavailable">Freeform needs Shizuku or root mode, and system freeform support</string>

@@ -24,9 +24,7 @@ import com.aistra.hails.app.AppManager
 import com.aistra.hails.app.AppInfo
 import com.aistra.hails.app.HailData
 import com.aistra.hails.app.UnfrozenStore
-import com.aistra.hails.utils.HPolicy
-import com.aistra.hails.utils.HShell
-import com.aistra.hails.utils.HShizuku
+import com.aistra.hails.utils.HActions
 import com.aistra.hails.utils.HUI
 import com.aistra.hails.utils.NameComparator
 import com.google.android.material.card.MaterialCardView
@@ -343,15 +341,7 @@ class ShakeOverlayPanel(
      */
     private fun lockScreen() {
         scope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                when {
-                    HPolicy.isAdminActive -> HPolicy.lockScreen
-                    HailData.workingMode.startsWith(HailData.SU) -> HShell.lockScreen
-                    HailData.workingMode.startsWith(HailData.SHIZUKU) ->
-                        HShizuku.execute("input keyevent KEYCODE_POWER").first == 0
-                    else -> false
-                }
-            }
+            val ok = withContext(Dispatchers.IO) { HActions.lockScreen() }
             if (ok) onClose() else HUI.showToast(R.string.shake_lock_screen_unavailable)
         }
     }

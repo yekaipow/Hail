@@ -41,6 +41,7 @@ import com.aistra.hails.app.AppManager
 import com.aistra.hails.app.HailApi
 import com.aistra.hails.app.HailData
 import com.aistra.hails.databinding.DialogInputBinding
+import com.aistra.hails.services.ShakeOverlayService
 import com.aistra.hails.ui.main.MainActivity
 import com.aistra.hails.ui.main.MainFragment
 import com.aistra.hails.ui.theme.AppTheme
@@ -81,6 +82,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
     private fun SettingsScreen() {
         val autoFreezeAfterLock = rememberPreferenceState(HailData.AUTO_FREEZE_AFTER_LOCK, false)
         val shakeOverlay = rememberPreferenceState(HailData.SHAKE_OVERLAY, false)
+        val shakeFloatingBall = rememberPreferenceState(HailData.SHAKE_FLOATING_BALL, false)
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             listPreference(
                 key = HailData.WORKING_MODE,
@@ -259,6 +261,29 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 enabled = { shakeOverlay.value },
                 icon = { Icon(imageVector = Icons.Outlined.Speed, contentDescription = null) },
                 valueText = { Text(text = "${(it * 100).toInt()}%") }
+            )
+            item(key = HailData.SHAKE_FLOATING_BALL, contentType = "SwitchPreference") {
+                SwitchPreference(
+                    value = shakeFloatingBall.value,
+                    onValueChange = {
+                        shakeFloatingBall.value = it
+                        ShakeOverlayService.instance?.setFloatingBallEnabled(it)
+                        true
+                    },
+                    title = { Text(text = stringResource(R.string.shake_floating_ball)) },
+                    summary = { Text(text = stringResource(R.string.shake_floating_ball_desc)) },
+                    icon = { Icon(imageVector = Icons.Outlined.Adjust, contentDescription = null) }
+                )
+            }
+            listPreference(
+                key = HailData.SHAKE_FLOATING_BALL_ACTION,
+                defaultValue = HailData.ACTION_FREEZE_ALL,
+                onValueChange = { _, _ -> true },
+                values = mutableListOf(HailData.ACTION_FREEZE_ALL, HailData.ACTION_LOCK),
+                entriesId = R.array.shake_floating_ball_action_entries,
+                titleId = R.string.shake_floating_ball_long_press,
+                icon = Icons.Outlined.TouchApp,
+                type = ListPreferenceType.ALERT_DIALOG
             )
             horizontalDivider()
             preferenceCategory(key = "shortcuts", title = { Text(text = stringResource(R.string.title_shortcuts)) })

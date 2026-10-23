@@ -124,6 +124,10 @@ object HailData {
     const val SKIP_FOREGROUND_APP = "skip_foreground_app"
     const val SKIP_NOTIFYING_APP = "skip_notifying_app"
     const val SHAKE_OVERLAY = "shake_overlay"
+    const val SHAKE_FLOATING_BALL = "shake_floating_ball"
+    const val SHAKE_FLOATING_BALL_ACTION = "shake_floating_ball_action"
+    const val SHAKE_FLOATING_BALL_X = "shake_floating_ball_x"
+    const val SHAKE_FLOATING_BALL_Y = "shake_floating_ball_y"
     const val SHAKE_SENSITIVITY = "shake_sensitivity_f"
     const val DYNAMIC_SHORTCUT_ACTION = "dynamic_shortcut_action"
     val DYNAMIC_SHORTCUT_ACTIONS = listOf(
@@ -165,6 +169,22 @@ object HailData {
 
     /** 摇一摇灵敏度，0（需用力摇）.. 1（轻摇即触发），默认 0.5 */
     val shakeSensitivity get() = sp.getFloat(SHAKE_SENSITIVITY, 0.5f)
+
+    var shakeFloatingBall
+        get() = sp.getBoolean(SHAKE_FLOATING_BALL, false)
+        set(value) = sp.edit { putBoolean(SHAKE_FLOATING_BALL, value) }
+
+    /** 悬浮球长按动作：全部冻结 / 锁屏 */
+    val shakeFloatingBallAction get() = sp.getString(SHAKE_FLOATING_BALL_ACTION, ACTION_FREEZE_ALL)!!
+
+    /** 悬浮球上次的位置，Int.MIN_VALUE 表示从未摆放过 */
+    var shakeFloatingBallX: Int
+        get() = sp.getInt(SHAKE_FLOATING_BALL_X, Int.MIN_VALUE)
+        set(value) = sp.edit { putInt(SHAKE_FLOATING_BALL_X, value) }
+
+    var shakeFloatingBallY: Int
+        get() = sp.getInt(SHAKE_FLOATING_BALL_Y, Int.MIN_VALUE)
+        set(value) = sp.edit { putInt(SHAKE_FLOATING_BALL_Y, value) }
     val dynamicShortcutAction get() = sp.getString(DYNAMIC_SHORTCUT_ACTION, ACTION_NONE)!!
 
     private val dir = "${app.filesDir.path}/v1"
