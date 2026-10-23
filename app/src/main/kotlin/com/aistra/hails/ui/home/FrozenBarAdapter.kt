@@ -58,12 +58,14 @@ class FrozenBarAdapter(
     }
 
     /**
-     * 强制全量重绑。
-     * DiffUtil 的 areContentsTheSame 比较的是实时 getter（AppInfo.state），
-     * 新旧对象同一时刻查询结果恒等，冻结完成后会被判定"内容未变"而不重绑，
-     * 导致图标停在旧颜色。这里显式重绑，保证按最新状态渲染。
+     * 只重绑指定应用（冻结状态变化后局部刷新）。
+     * 不用 notifyDataSetChanged 整表刷新，避免所有图标重新加载造成闪烁；
+     * 也不需要依赖 DiffUtil —— 它比较的 state 是实时 getter，判断不出变化。
      */
-    fun refresh() = notifyDataSetChanged()
+    fun refreshItem(packageName: String) {
+        val index = currentList.indexOfFirst { it.packageName == packageName }
+        if (index >= 0) notifyItemChanged(index)
+    }
 
     fun onDestroy() {
         if (loadIconJob?.isActive == true) loadIconJob?.cancel()

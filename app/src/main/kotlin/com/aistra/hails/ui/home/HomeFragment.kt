@@ -11,6 +11,7 @@ import android.view.ViewGroup
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.PreferenceManager
+import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.GridLayoutManager
 import com.aistra.hails.HailApp.Companion.app
 import com.aistra.hails.R
@@ -69,6 +70,8 @@ class HomeFragment : MainFragment() {
         binding.frozenList.apply {
             layoutManager = GridLayoutManager(activity, frozenSpanCount)
             adapter = frozenAdapter
+            // 局部重绑（notifyItemChanged）的交叉淡入动画会表现为闪烁，关掉
+            (itemAnimator as? DefaultItemAnimator)?.supportsChangeAnimations = false
         }
         // 标题栏手势：上滑展开 / 下拉折叠；列表滚动到顶时下拉也能折叠
         binding.frozenTitle.setOnTouchListener(frozenTitleTouchListener)
@@ -120,8 +123,7 @@ class HomeFragment : MainFragment() {
             updateFrozenTitle(binding, list.size)
             if (visible) applyFrozenListHeight(list.size)
             binding.frozenBar.isVisible = visible
-            // 提交后强制重绑：state 是实时 getter，DiffUtil 判断不出冻结状态变化
-            frozenAdapter.submitList(list) { frozenAdapter.refresh() }
+            frozenAdapter.submitList(list)
         } finally {
             updatingBar = false
         }
@@ -217,7 +219,7 @@ class HomeFragment : MainFragment() {
                     return@launch
                 }
                 UnfrozenStore.add(info.packageName)
-                updateFrozenBar()
+                frozenAdapter.refreshItem(info.packageName)
                 app.packageManager.getLaunchIntentForPackage(info.packageName)?.let {
                     startActivity(it)
                 } ?: HUI.showToast(R.string.activity_not_found)
@@ -232,7 +234,8 @@ class HomeFragment : MainFragment() {
             val ok = withContext(Dispatchers.IO) { AppManager.setAppFrozen(info.packageName, true) }
             if (ok) {
                 HUI.showToast(R.string.msg_freeze, info.name)
-                updateFrozenBar()
+                // 只重绑这一格让图标变灰；未锁定项随后由 SP 监听整表更新移除
+                frozenAdapter.refreshItem(info.packageName)
             } else {
                 HUI.showToast(R.string.permission_denied)
             }
