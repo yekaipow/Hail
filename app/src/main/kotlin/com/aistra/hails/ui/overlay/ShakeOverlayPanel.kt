@@ -39,14 +39,17 @@ private data class OverlayApp(
     val packageName: String,
     val label: String,
     val icon: Bitmap?,
-    val frozen: Boolean
+    val frozen: Boolean,
+    val pinned: Boolean
 )
 
 /**
  * 摇一摇后弹出的悬浮面板（纯 View 实现）。
  *
  * 内容就是首页底部那块「冻结」区（fragment_home.xml 里的 frozen_list）：
- * 数据取自 UnfrozenStore，最多 10 个、四列网格；点击冻结项解冻并打开，点击未冻结项直接冻结。
+ * 数据取自 UnfrozenStore，最多 10 个、四列网格。
+ * 点击冻结项解冻并打开；点击未冻结项直接冻结（锁定的项保留在列表里）；
+ * 长按锁定 / 解锁，与首页一致。
  *
  * 注意：这里是自己构建格子 + 直接 loadIcon，没有复用 FrozenBarAdapter / AppIconCache /
  * item_frozen_bar。那套 UI 是给 Activity 用的，搬进 Service 悬浮窗会在运行时崩溃。
@@ -165,6 +168,8 @@ class ShakeOverlayPanel(
         setPadding(dp(4), dp(6), dp(4), dp(6))
         isClickable = true
         setOnClickListener { onCellClick(app) }
+        // 长按锁定 / 解锁，与首页 frozen_list 一致
+        setOnLongClickListener { onCellLongClick(app); true }
 
         addView(ImageView(context).apply {
             val bitmap = app.icon
@@ -179,7 +184,12 @@ class ShakeOverlayPanel(
             layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
         })
         addView(TextView(context).apply {
-            text = app.label
+            // 与首页一致：锁定加 🔒 前缀，冻结加 ❄️ 前缀
+            text = buildString {
+                if (app.pinned) append("\uD83D\uDD12")
+                if (app.frozen) append("\u2744\uFE0F")
+                append(app.label)
+            }
             textSize = 11f
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
@@ -265,10 +275,22 @@ class ShakeOverlayPanel(
                 }
                 onOpenApp(app.packageName)
             } else {
+                // 冻结成功后：未锁定的项由 AppManager 移出列表，锁定的保留
                 val frozen = withContext(Dispatchers.IO) { AppManager.setAppFrozen(app.packageName, true) }
-                if (frozen) reload() else notifyFailure()
+                if (frozen) {
+                    HUI.showToast(R.string.msg_freeze, app.label)
+                    reload()
+                } else notifyFailure()
             }
         }
+    }
+
+    /** 长按：锁定 / 解锁；锁定后冻结不再把应用移出列表，下次点击直接解冻打开 */
+    private fun onCellLongClick(app: OverlayApp) {
+        val locked = UnfrozenStore.isLocked(app.packageName)
+        UnfrozenStore.setLocked(app.packageName, !locked)
+        HUI.showToast(if (locked) R.string.msg_unlocked else R.string.msg_locked, app.label)
+        reload()
     }
 
     private fun setAll(frozen: Boolean) {
@@ -361,7 +383,8 @@ class ShakeOverlayPanel(
                         icon = runCatching {
                             applicationInfo.loadIcon(packageManager).toBitmap(ICON_SIZE, ICON_SIZE)
                         }.getOrNull(),
-                        frozen = AppManager.isAppFrozen(info.packageName)
+                        frozen = AppManager.isAppFrozen(info.packageName),
+                        pinned = UnfrozenStore.isLocked(info.packageName)
                     )
                 }
         }
