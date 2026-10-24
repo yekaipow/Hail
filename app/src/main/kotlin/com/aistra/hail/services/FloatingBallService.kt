@@ -55,7 +55,8 @@ class FloatingBallService : Service() {
 
     private val prefListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         // 大小改变后重建悬浮球，位置从 HailData 读回，不会跳位
-        if (key == HailData.FLOATING_BALL_SIZE && floatingBall != null) {
+        if (key == HailData.FLOATING_BALL_SIZE) {
+            // 始终先拆后建：隐藏状态下改回大尺寸也要重新出现
             detachFloatingBall()
             attachFloatingBall()
         }
@@ -109,6 +110,11 @@ class FloatingBallService : Service() {
     private fun attachFloatingBall() {
         if (floatingBall != null) return
         if (!Settings.canDrawOverlays(this)) return
+        /*
+         * 尺寸小于阈值时直接不挂窗口：部分 ROM 会把越界窗口拉回屏幕内，
+         * 导致"挪到屏幕外"仍在边缘露出一截。不 addView 才能保证完全不可见。
+         */
+        if (HailData.floatingBallSize < MIN_VISIBLE_SIZE_DP) return
         val density = resources.displayMetrics.density
         val size = (HailData.floatingBallSize * density).toInt().coerceAtLeast(1)
         val metrics = resources.displayMetrics
@@ -130,9 +136,7 @@ class FloatingBallService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            // 尺寸小到几乎看不见时，整个窗口移到屏幕右侧之外：不遮挡、不误触
-            x = if (HailData.floatingBallSize < MIN_VISIBLE_SIZE_DP) metrics.widthPixels + size
-            else if (HailData.shakeFloatingBallX != Int.MIN_VALUE) HailData.shakeFloatingBallX
+            x = if (HailData.shakeFloatingBallX != Int.MIN_VALUE) HailData.shakeFloatingBallX
             else metrics.widthPixels - size - (BALL_MARGIN_DP * density).toInt()
             y = if (HailData.shakeFloatingBallY != Int.MIN_VALUE) HailData.shakeFloatingBallY
             else metrics.heightPixels / 3
@@ -242,7 +246,7 @@ class FloatingBallService : Service() {
         const val NOTIFICATION_ID = 102
         const val BALL_MARGIN_DP = 16
 
-        /** 悬浮球尺寸小于该值（dp）时移到屏幕外，记忆位置保持不变，改回大尺寸即复位 */
+        /** 悬浮球尺寸小于该值（dp）时不创建窗口（完全不可见），改回大尺寸自动恢复 */
         const val MIN_VISIBLE_SIZE_DP = 5
         const val BALL_LONG_PRESS_MS = 500L
 
