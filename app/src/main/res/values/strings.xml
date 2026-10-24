@@ -188,8 +188,7 @@
     <string name="shake_floating_ball_long_press">Long-press action</string>
     <string name="msg_freeze_all">Froze all pending apps</string>
     <string name="shake_lock_screen">Lock screen</string>
-    <string name="shake_freeform_mode">Freeform</string>
-    <string name="shake_freeform_unavailable">Freeform needs Shizuku or root mode, and system freeform support</string>
+    <string name="shake_freeze_all">Freeze all</string>
     <string name="shake_freeze_mode">Freeze</string>
     <string name="shake_lock_screen_unavailable">Lock screen needs an active device admin, root or Shizuku</string>
     <string name="shake_state_frozen">Frozen</string>

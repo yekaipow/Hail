@@ -62,7 +62,7 @@ private data class OverlayApp(
 class ShakeOverlayPanel(
     context: Context,
     private val onClose: () -> Unit,
-    private val onOpenApp: (String?, Boolean) -> Unit,
+    private val onOpenApp: (String?) -> Unit,
     private val onDrag: (Float, Float) -> Unit
 ) : MaterialCardView(ContextThemeWrapper(context, R.style.Theme_Hail)) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -73,10 +73,6 @@ class ShakeOverlayPanel(
     /** 冻结模式开关：关闭时点击图标只打开/解冻；开启后点击即冻结。每次弹出面板自动复位 */
     private var freezeMode = false
     private lateinit var freezeModeButton: TextView
-
-    /** 小窗模式开关：开启后点击图标以 Freeform 自由窗口打开，否则全屏 */
-    private var freeformMode = false
-    private lateinit var freeformModeButton: TextView
 
     /**
      * 内容高度变化后回调，参数是面板应有的精确像素高度。
@@ -137,7 +133,7 @@ class ShakeOverlayPanel(
             setPadding(dp(8), 0, 0, 0)
         })
         addView(View(context), LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-        addView(textButton(context.getString(R.string.shake_open_app), 13f) { onOpenApp(null, false) })
+        addView(textButton(context.getString(R.string.shake_open_app), 13f) { onOpenApp(null) })
         addView(textButton("✕", 16f) { onClose() })
     }
 
@@ -154,12 +150,10 @@ class ShakeOverlayPanel(
         }
         styleModeButton(freezeModeButton, freezeMode)
         addView(freezeModeButton, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-        freeformModeButton = textButton(context.getString(R.string.shake_freeform_mode), 13f) {
-            freeformMode = !freeformMode
-            styleModeButton(freeformModeButton, freeformMode)
-        }
-        styleModeButton(freeformModeButton, freeformMode)
-        addView(freeformModeButton, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        addView(
+            textButton(context.getString(R.string.shake_freeze_all), 13f) { freezeAll() },
+            LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
+        )
     }
 
     /**
@@ -167,9 +161,7 @@ class ShakeOverlayPanel(
      * 未激活时无背景、弱化文字色。
      */
     private fun styleModeButton(button: TextView, active: Boolean) {
-        val label = context.getString(
-            if (button === freezeModeButton) R.string.shake_freeze_mode else R.string.shake_freeform_mode
-        )
+        val label = context.getString(R.string.shake_freeze_mode)
         button.text = if (active) "● $label" else label
         button.setTextColor(if (active) colorPrimary else colorOnSurfaceVariant)
         button.typeface = if (active) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
@@ -311,7 +303,7 @@ class ShakeOverlayPanel(
                         notifyFailure()
                         return@launch
                     }
-                    onOpenApp(app.packageName, freeformMode)
+                    onOpenApp(app.packageName)
                 }
                 freezeMode -> {
                     // 冻结成功后：未锁定的项由 AppManager 移出列表，锁定的保留
@@ -321,7 +313,7 @@ class ShakeOverlayPanel(
                         reload()
                     } else notifyFailure()
                 }
-                else -> onOpenApp(app.packageName, freeformMode)
+                else -> onOpenApp(app.packageName)
             }
         }
     }
@@ -332,6 +324,17 @@ class ShakeOverlayPanel(
         UnfrozenStore.setLocked(app.packageName, !locked)
         HUI.showToast(if (locked) R.string.msg_unlocked else R.string.msg_locked, app.label)
         reload()
+    }
+
+    /** 全冻：冻结「冻结」栏里所有未冻结的应用，与悬浮球长按同一套逻辑 */
+    private fun freezeAll() {
+        scope.launch {
+            val frozen = withContext(Dispatchers.IO) { HActions.freezeAll() }
+            if (frozen > 0) {
+                HUI.showToast(R.string.msg_freeze_all)
+                reload()
+            }
+        }
     }
 
     /**

@@ -1,13 +1,8 @@
 package com.aistra.hail.ui.overlay
 
-import android.app.ActivityOptions
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
-import android.graphics.Rect
-import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.ViewGroup.LayoutParams
@@ -16,8 +11,6 @@ import com.aistra.hail.R
 import com.aistra.hail.app.HailData
 import com.aistra.hail.ui.main.MainActivity
 import com.aistra.hail.utils.HIsland
-import com.aistra.hail.utils.HShell
-import com.aistra.hail.utils.HShizuku
 import com.aistra.hail.utils.HTarget
 import com.aistra.hail.utils.HUI
 import kotlin.math.min
@@ -46,9 +39,9 @@ class ShakeOverlayHost(private val context: Context) {
         val panel = ShakeOverlayPanel(
             context,
             onClose = { hide() },
-            onOpenApp = { packageName, freeform ->
+            onOpenApp = { packageName ->
                 hide()
-                openApp(packageName, freeform)
+                openApp(packageName)
             },
             onDrag = { dx, dy -> moveBy(dx, dy) }
         )
@@ -121,11 +114,8 @@ class ShakeOverlayHost(private val context: Context) {
         }
     }
 
-    /**
-     * @param packageName 为 null 时打开 Hail 主界面
-     * @param freeform true 时以自由窗口方式打开（设备不支持时系统自动回退全屏）
-     */
-    private fun openApp(packageName: String?, freeform: Boolean) {
+    /** @param packageName 为 null 时打开 Hail 主界面 */
+    private fun openApp(packageName: String?) {
         runCatching {
             if (packageName == null) {
                 context.startActivity(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -135,67 +125,9 @@ class ShakeOverlayHost(private val context: Context) {
             val intent = context.packageManager.getLaunchIntentForPackage(packageName)
                 ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 ?: throw IllegalStateException("no launch intent")
-            if (freeform) startActivityFreeform(intent) else context.startActivity(intent)
+            context.startActivity(intent)
         }.onFailure {
             HUI.showToast(R.string.activity_not_found)
         }
     }
-
-    /**
-     * 以自由窗口（Freeform）打开。
-     *
-     * setLaunchWindowingMode 是 @hide API：Android 9+ 反射会被 hidden API 限制拦截，
-     * 因此优先走 Shizuku / root 的 shell —— `am start --windowingMode 5`（Android 9+ 支持），
-     * 不受 hidden API 限制。无特权时退回反射尝试，仍失败则全屏启动并提示。
-     *
-     * 另外最终能否小窗还取决于系统是否支持自由窗口
-     * （开发者选项「强制允许自由窗口」或 ROM 自带），不支持时系统会静默回退全屏。
-     */
-    private fun startActivityFreeform(intent: Intent) {
-        val component = intent.component?.flattenToShortString()
-        val shellPath = component != null && (
-            HailData.workingMode.startsWith(HailData.SHIZUKU) ||
-                HailData.workingMode.startsWith(HailData.SU)
-            )
-        if (shellPath && component != null) {
-            val command = "am start --user current --windowingMode 5 -n $component"
-            val shizuku = HailData.workingMode.startsWith(HailData.SHIZUKU)
-            Thread {
-                val result = if (shizuku) HShizuku.execute(command) else HShell.execute(command, true)
-                // 老系统不认识 --windowingMode 参数会导致启动失败，回退普通全屏启动
-                if (result.first != 0) runOnMain { context.startActivity(intent) }
-            }.start()
-            return
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            try {
-                val options = ActivityOptions.makeBasic()
-                ActivityOptions::class.java
-                    .getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType)
-                    .invoke(options, WINDOWING_MODE_FREEFORM)
-                val metrics = context.resources.displayMetrics
-                val width = metrics.widthPixels * 3 / 5
-                val height = metrics.heightPixels * 3 / 5
-                val left = (metrics.widthPixels - width) / 2
-                val top = (metrics.heightPixels - height) / 4
-                options.setLaunchBounds(Rect(left, top, left + width, top + height))
-                context.startActivity(intent, options.toBundle())
-                return
-            } catch (e: Exception) {
-                // hidden API 被系统拦截等，走下方兜底
-            }
-        }
-        context.startActivity(intent)
-        HUI.showToast(R.string.shake_freeform_unavailable)
-    }
-
-    private inline fun runOnMain(crossinline block: () -> Unit) {
-        Handler(Looper.getMainLooper()).post { block() }
-    }
-
-    private companion object {
-        /** WindowConfiguration.WINDOWING_MODE_FREEFORM */
-        const val WINDOWING_MODE_FREEFORM = 5
-    }
 }
-
