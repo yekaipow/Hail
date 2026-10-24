@@ -130,7 +130,9 @@ class FloatingBallService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = if (HailData.shakeFloatingBallX != Int.MIN_VALUE) HailData.shakeFloatingBallX
+            // 尺寸小到几乎看不见时，整个窗口移到屏幕右侧之外：不遮挡、不误触
+            x = if (HailData.floatingBallSize < MIN_VISIBLE_SIZE_DP) metrics.widthPixels + size
+            else if (HailData.shakeFloatingBallX != Int.MIN_VALUE) HailData.shakeFloatingBallX
             else metrics.widthPixels - size - (BALL_MARGIN_DP * density).toInt()
             y = if (HailData.shakeFloatingBallY != Int.MIN_VALUE) HailData.shakeFloatingBallY
             else metrics.heightPixels / 3
@@ -239,6 +241,9 @@ class FloatingBallService : Service() {
     private companion object {
         const val NOTIFICATION_ID = 102
         const val BALL_MARGIN_DP = 16
+
+        /** 悬浮球尺寸小于该值（dp）时移到屏幕外，记忆位置保持不变，改回大尺寸即复位 */
+        const val MIN_VISIBLE_SIZE_DP = 5
         const val BALL_LONG_PRESS_MS = 500L
 
         /** 半透明深灰圆底，深浅主题下都能看清 */
