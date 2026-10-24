@@ -216,7 +216,7 @@ class ShakeOverlayPanel(
                 setImageResource(R.drawable.ic_round_frozen)
                 setColorFilter(colorOnSurfaceVariant)
             }
-            layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
+            layoutParams = LinearLayout.LayoutParams(dp(ICON_SIZE_DP), dp(ICON_SIZE_DP))
         })
         addView(TextView(context).apply {
             // 与首页一致：锁定加 🔒 前缀，冻结加 ❄️ 前缀
@@ -229,7 +229,7 @@ class ShakeOverlayPanel(
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             gravity = Gravity.CENTER
-            setPadding(0, dp(4), 0, 0)
+            setPadding(0, dp(3), 0, 0)
             setTextColor(if (app.frozen) colorOnSurfaceVariant else colorOnSurface)
         })
     }
@@ -388,7 +388,10 @@ class ShakeOverlayPanel(
         const val COLUMNS = 4
 
         /** 格子边长（dp），与首页网格的行高一致 */
-        const val CELL_SIZE_DP = 76
+        const val CELL_SIZE_DP = 70
+
+        /** 应用图标边长；比格子小一圈，留出上下呼吸空间 */
+        const val ICON_SIZE_DP = 36
 
         /** 标题栏 / 底部按钮栏的固定高度（dp） */
         const val HEADER_DP = 44
