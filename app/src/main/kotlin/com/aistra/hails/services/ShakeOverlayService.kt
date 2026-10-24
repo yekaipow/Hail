@@ -113,7 +113,8 @@ class ShakeOverlayService : Service() {
 
     private fun onShake() {
         if (!isInteractive()) return
-        overlay.show()
+        // 摇一摇作为面板开关：面板已显示时再摇就收起，与悬浮球点击行为一致
+        if (overlay.isShowing) overlay.hide() else overlay.show()
     }
 
     private fun buildNotification() = NotificationCompat.Builder(this, channelId)
