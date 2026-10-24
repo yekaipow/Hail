@@ -110,14 +110,14 @@ class FloatingBallService : Service() {
     private fun attachFloatingBall() {
         if (floatingBall != null) return
         if (!Settings.canDrawOverlays(this)) return
-        /*
-         * 尺寸小于阈值时直接不挂窗口：部分 ROM 会把越界窗口拉回屏幕内，
-         * 导致"挪到屏幕外"仍在边缘露出一截。不 addView 才能保证完全不可见。
-         */
-        if (HailData.floatingBallSize < MIN_VISIBLE_SIZE_DP) return
         val density = resources.displayMetrics.density
-        val size = (HailData.floatingBallSize * density).toInt().coerceAtLeast(1)
         val metrics = resources.displayMetrics
+        /*
+         * 极小尺寸时退化成 1 像素窗口贴在屏幕右边缘：
+         * 窗口依然存在（保活、可恢复），但肉眼基本看不到，也不会遮挡画面。
+         */
+        val minimal = HailData.floatingBallSize < MIN_VISIBLE_SIZE_DP
+        val size = if (minimal) 1 else (HailData.floatingBallSize * density).toInt().coerceAtLeast(1)
         val ball = ImageView(this).apply {
             setImageDrawable(applicationInfo.loadIcon(packageManager))
             background = GradientDrawable().apply {
@@ -136,7 +136,8 @@ class FloatingBallService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = if (HailData.shakeFloatingBallX != Int.MIN_VALUE) HailData.shakeFloatingBallX
+            x = if (minimal) metrics.widthPixels - 1
+            else if (HailData.shakeFloatingBallX != Int.MIN_VALUE) HailData.shakeFloatingBallX
             else metrics.widthPixels - size - (BALL_MARGIN_DP * density).toInt()
             y = if (HailData.shakeFloatingBallY != Int.MIN_VALUE) HailData.shakeFloatingBallY
             else metrics.heightPixels / 3
@@ -182,8 +183,11 @@ class FloatingBallService : Service() {
                     mainHandler.removeCallbacks(longPressRunnable)
                     if (event.actionMasked == MotionEvent.ACTION_UP) {
                         if (moved) {
-                            HailData.shakeFloatingBallX = params.x
-                            HailData.shakeFloatingBallY = params.y
+                            // 1 像素模式下不记忆位置，改回大尺寸时仍回到原来的位置
+                            if (!minimal) {
+                                HailData.shakeFloatingBallX = params.x
+                                HailData.shakeFloatingBallY = params.y
+                            }
                         } else if (!longPressed) {
                             // 点击悬浮球 = 悬浮窗面板的开关
                             if (panelHost.isShowing) panelHost.hide() else panelHost.show()
@@ -246,7 +250,7 @@ class FloatingBallService : Service() {
         const val NOTIFICATION_ID = 102
         const val BALL_MARGIN_DP = 16
 
-        /** 悬浮球尺寸小于该值（dp）时不创建窗口（完全不可见），改回大尺寸自动恢复 */
+        /** 悬浮球尺寸小于该值（dp）时退化为屏幕边缘的 1 像素窗口：保活但不遮挡 */
         const val MIN_VISIBLE_SIZE_DP = 5
         const val BALL_LONG_PRESS_MS = 500L
 
