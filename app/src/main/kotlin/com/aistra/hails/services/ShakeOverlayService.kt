@@ -7,7 +7,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
-import android.app.KeyguardManager
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationChannelCompat
@@ -41,9 +40,13 @@ class ShakeOverlayService : Service() {
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
-                // 亮屏但还锁着时没有摇晃的必要，等解锁后再启动传感器
-                Intent.ACTION_SCREEN_ON -> if (isUnlocked()) startListening()
-                Intent.ACTION_USER_PRESENT -> startListening()
+                /*
+                 * 亮屏就启动，不判断是否解锁。
+                 * 之前等 ACTION_USER_PRESENT 再启动，但息屏较久后该广播可能延迟/丢失，
+                 * 传感器就一直没注册，表现为「亮屏后摇一摇失效」。
+                 * 锁屏期间的少量采样换可靠性是值得的；start() 本身幂等，重复调用无害。
+                 */
+                Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> startListening()
                 Intent.ACTION_SCREEN_OFF -> {
                     stopListening()
                     overlay.hide()
@@ -66,7 +69,7 @@ class ShakeOverlayService : Service() {
             },
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
-        if (isInteractive() && isUnlocked()) startListening()
+        if (isInteractive()) startListening()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -78,7 +81,7 @@ class ShakeOverlayService : Service() {
             if (HTarget.U) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
         )
         // 从设置页重启服务时屏幕可能已经亮着
-        if (isInteractive() && isUnlocked()) startListening()
+        if (isInteractive()) startListening()
         return START_STICKY
     }
 
@@ -93,10 +96,6 @@ class ShakeOverlayService : Service() {
     }
 
     private fun isInteractive(): Boolean = getSystemService<PowerManager>()?.isInteractive == true
-
-    /** 锁屏界面下不采样，省电；解锁后由 ACTION_USER_PRESENT 触发启动 */
-    private fun isUnlocked(): Boolean =
-        (getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager)?.isKeyguardLocked != true
 
     private fun startListening() {
         val shakeDetector = detector ?: return

@@ -42,6 +42,12 @@ class MainActivity : AppCompatActivity(), NavController.OnDestinationChangedList
                 .appTasks.firstOrNull()
                 ?.setExcludeFromRecents(HailData.hideFromRecents)
         }
+        // 保活：服务被系统/ROM 修掉后，回到 App 时重新拉起（重复启动是幂等的）
+        if (Settings.canDrawOverlays(this)) {
+            if (HailData.shakeOverlay) app.setShakeOverlayService(true)
+            if (HailData.shakeFloatingBall) app.setFloatingBallService(true)
+            if (HailData.recentTaskFreeze) app.setRecentTaskFreezeService(true)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
