@@ -1,3 +1,4 @@
+// CI 触发标记：workflow 的 push 过滤只匹配 app/** 等路径，需要实质性改动才会重跑构建
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
