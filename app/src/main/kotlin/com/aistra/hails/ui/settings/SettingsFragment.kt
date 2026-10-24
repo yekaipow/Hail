@@ -283,6 +283,21 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 icon = { Icon(imageVector = Icons.Outlined.Speed, contentDescription = null) },
                 valueText = { Text(text = "${(it * 100).toInt()}%") }
             )
+            listPreference(
+                key = HailData.SHAKE_SAMPLE_INTERVAL,
+                defaultValue = "200",
+                onValueChange = { _, value ->
+                    // 采样周期变了需要重新注册传感器
+                    app.setShakeOverlayService(false)
+                    if (shakeOverlay.value) app.setShakeOverlayService(true)
+                    true
+                },
+                values = mutableListOf("20", "60", "100", "200", "500"),
+                entriesId = R.array.shake_sample_rate_entries,
+                titleId = R.string.shake_sample_rate,
+                icon = Icons.Outlined.Timeline,
+                type = ListPreferenceType.ALERT_DIALOG
+            )
             item(key = HailData.SHAKE_FLOATING_BALL, contentType = "SwitchPreference") {
                 SwitchPreference(
                     value = shakeFloatingBall.value,

@@ -163,6 +163,12 @@
     <string name="shake_overlay">摇一摇悬浮窗</string>
     <string name="shake_overlay_switch">启用摇一摇</string>
     <string name="shake_overlay_desc">亮屏时摇晃手机，以悬浮窗打开 Hail 面板</string>
+    <string name="shake_sample_rate">采样率</string>
+    <string name="shake_sample_rate_20">高速（20ms）</string>
+    <string name="shake_sample_rate_60">标准（60ms）</string>
+    <string name="shake_sample_rate_100">平衡（100ms）</string>
+    <string name="shake_sample_rate_200">省电（200ms）</string>
+    <string name="shake_sample_rate_500">极省电（500ms）</string>
     <string name="shake_sensitivity">摇晃灵敏度</string>
     <string name="shake_overlay_notification_desc">亮屏时摇晃手机即可打开悬浮窗</string>
     <string name="shake_overlay_permission">需要授予「显示在其他应用的上层」权限才能显示悬浮窗</string>

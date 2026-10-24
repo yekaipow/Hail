@@ -7,6 +7,7 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.SystemClock
 import androidx.core.content.getSystemService
+import com.aistra.hails.app.HailData
 import kotlin.math.sqrt
 
 /**
@@ -19,7 +20,7 @@ import kotlin.math.sqrt
  * 幅值超过阈值即视为有意摇晃。灵敏度 0..1 线性映射到 [LIGHT_THRESHOLD]..[HEAVY_THRESHOLD]
  * m/s²（灵敏度越高阈值越低，越容易触发）。
  *
- * 采样率用 [SensorManager.SENSOR_DELAY_NORMAL]（约 200ms），把后台功耗压到最低。
+ * 采样周期由设置决定（[HailData.shakeSampleIntervalMs]，20-500ms，默认 200ms）。
  * 何时注册 / 注销由调用方按屏幕与锁屏状态控制，以进一步降低耗电。
  */
 class ShakeDetector(
@@ -42,6 +43,9 @@ class ShakeDetector(
 
     val isSupported: Boolean get() = sensor != null
 
+    /** 当前生效的采样周期（毫秒），供界面展示 */
+    val sampleIntervalMs: Int get() = HailData.shakeSampleIntervalMs.coerceIn(20, 500)
+
     /** @return 是否成功开始监听（无可用传感器时返回 false） */
     fun start(): Boolean {
         val manager = sensorManager ?: return false
@@ -49,9 +53,9 @@ class ShakeDetector(
         if (listening) return true
         gravity.fill(0f)
         lastShakeTime = 0L
-        // SENSOR_DELAY_NORMAL（约 200ms / 5Hz）：最省电的采样率；
-        // 摇晃持续 200ms 以上时仍能采到峰值，但短促的甩动可能漏检
-        listening = manager.registerListener(this, target, SensorManager.SENSOR_DELAY_NORMAL)
+        // 采样周期由设置控制：越小越灵敏、越耗电；20ms 接近 GAME，200ms 接近 NORMAL
+        val intervalUs = sampleIntervalMs * 1000
+        listening = manager.registerListener(this, target, intervalUs)
         return listening
     }
 

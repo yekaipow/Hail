@@ -165,6 +165,12 @@
     <string name="shake_overlay">Shake to open</string>
     <string name="shake_overlay_switch">Enable shake gesture</string>
     <string name="shake_overlay_desc">While the screen is on, shake the phone to open Hail in a floating window</string>
+    <string name="shake_sample_rate">Sample rate</string>
+    <string name="shake_sample_rate_20">Fast (20ms)</string>
+    <string name="shake_sample_rate_60">Standard (60ms)</string>
+    <string name="shake_sample_rate_100">Balanced (100ms)</string>
+    <string name="shake_sample_rate_200">Power save (200ms)</string>
+    <string name="shake_sample_rate_500">Max power save (500ms)</string>
     <string name="shake_sensitivity">Shake sensitivity</string>
     <string name="shake_overlay_notification_desc">Screen on, shake the phone to open the floating window</string>
     <string name="shake_overlay_permission">Overlay permission is required to show the floating window</string>

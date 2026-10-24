@@ -90,4 +90,11 @@
         <item>@string/action_freeze_all</item>
         <item>@string/action_lock</item>
     </string-array>
+    <string-array name="shake_sample_rate_entries">
+        <item>@string/shake_sample_rate_20</item>
+        <item>@string/shake_sample_rate_60</item>
+        <item>@string/shake_sample_rate_100</item>
+        <item>@string/shake_sample_rate_200</item>
+        <item>@string/shake_sample_rate_500</item>
+    </string-array>
 </resources>

@@ -132,6 +132,7 @@ object HailData {
     const val SHAKE_FLOATING_BALL_X = "shake_floating_ball_x"
     const val SHAKE_FLOATING_BALL_Y = "shake_floating_ball_y"
     const val SHAKE_SENSITIVITY = "shake_sensitivity_f"
+    const val SHAKE_SAMPLE_INTERVAL = "shake_sample_interval"
     const val DYNAMIC_SHORTCUT_ACTION = "dynamic_shortcut_action"
     val DYNAMIC_SHORTCUT_ACTIONS = listOf(
         ACTION_NONE,
@@ -185,6 +186,9 @@ object HailData {
 
     /** 摇一摇灵敏度，0（需用力摇）.. 1（轻摇即触发），默认 0.5 */
     val shakeSensitivity get() = sp.getFloat(SHAKE_SENSITIVITY, 0.5f)
+
+    /** 摇一摇采样周期（毫秒），20-500，默认 200 */
+    val shakeSampleIntervalMs get() = sp.getString(SHAKE_SAMPLE_INTERVAL, "200")?.toIntOrNull() ?: 200
 
     var shakeFloatingBall
         get() = sp.getBoolean(SHAKE_FLOATING_BALL, false)
