@@ -5,7 +5,6 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.provider.Settings
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup.LayoutParams
 import android.view.WindowManager
 import com.aistra.hail.R
@@ -22,9 +21,8 @@ import com.aistra.hail.utils.HUI
  * 悬浮窗内容是 [ShakeOverlayPanel]（纯 View 实现）。
  *
  * 关键约束：**一个宿主永远只持有一个窗口**。
- * 面板视图只创建一次，显示/隐藏通过切换可见性 + 把窗口缩到 1px 并挪到屏幕角落实现。
- * 之前隐藏走 removeView、下次显示再 addView，removeView 一旦失败/滞后就会在屏幕上留下多个面板，
- * 现在物理上不可能出现第二个窗口。
+ * 面板视图复用一个实例；隐藏时同步摘窗口（removeViewImmediate），显示时如果窗口还在
+ * （摘除失败/滞后）就直接更新这个窗口，绝不再 addView 一个新的，从根上避免窗口叠加。
  */
 class ShakeOverlayHost(private val context: Context) {
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -55,9 +53,9 @@ class ShakeOverlayHost(private val context: Context) {
         p.x = if (lastX != Int.MIN_VALUE) lastX else (metrics.widthPixels - p.width) / 2
         p.y = if (lastY != Int.MIN_VALUE) lastY else (metrics.heightPixels * 0.15f).toInt()
 
-        panelView.visibility = View.VISIBLE
         showing = true
         return try {
+            // 窗口还在（上次没摘干净）就更新它，绝不再 add 一个新窗口
             if (panelView.parent == null) windowManager.addView(panelView, p)
             else windowManager.updateViewLayout(panelView, p)
             // 每次打开都刷新一次数据（上次关闭后冻结状态可能已经变了）
@@ -66,7 +64,6 @@ class ShakeOverlayHost(private val context: Context) {
         } catch (e: Exception) {
             // 权限被回收或窗口被系统拒绝时不要把服务搞崩
             showing = false
-            panelView.visibility = View.GONE
             HUI.showToast(R.string.shake_overlay_permission)
             false
         }
@@ -79,14 +76,8 @@ class ShakeOverlayHost(private val context: Context) {
         showing = false
         lastX = p.x
         lastY = p.y
-        // 不销毁窗口：藏起来 + 缩成 1px 挪到屏幕右上角，既不可见也不挡触摸
-        panelView.visibility = View.GONE
-        p.width = 1
-        p.height = 1
-        p.x = context.resources.displayMetrics.widthPixels - 1
-        p.y = 0
-        p.flags = HIDDEN_FLAGS
-        runCatching { windowManager.updateViewLayout(panelView, p) }
+        // 同步摘除窗口；面板视图实例保留复用
+        runCatching { windowManager.removeViewImmediate(panelView) }
     }
 
     /** 服务销毁时调用 */
@@ -111,7 +102,7 @@ class ShakeOverlayHost(private val context: Context) {
         onDrag = { dx, dy -> moveBy(dx, dy) }
     ).apply {
         onContentHeightChanged = { heightPx ->
-            // 只有显示中才调整高度；隐藏时窗口固定 1px
+            // 只有显示中才调整高度
             if (showing) {
                 val p = params ?: return@onContentHeightChanged
                 runCatching {
@@ -181,8 +172,5 @@ class ShakeOverlayHost(private val context: Context) {
         val VISIBLE_FLAGS = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
             WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
-
-        /** 隐藏时再叠加不可触摸，1px 的角落窗口完全不参与交互 */
-        val HIDDEN_FLAGS = VISIBLE_FLAGS or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
     }
 }
