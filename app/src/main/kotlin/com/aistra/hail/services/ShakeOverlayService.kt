@@ -21,8 +21,8 @@ import androidx.core.content.getSystemService
 import com.aistra.hail.R
 import com.aistra.hail.app.HailData
 import com.aistra.hail.ui.main.MainActivity
+import com.aistra.hail.ui.overlay.OverlayPanelManager
 import com.aistra.hail.ui.overlay.ShakeOverlayHost
-import com.aistra.hail.ui.overlay.ShakeOverlayHosts
 import com.aistra.hail.utils.HTarget
 import com.aistra.hail.utils.HUI
 import com.aistra.hail.utils.ShakeDetector
@@ -35,6 +35,7 @@ import com.aistra.hail.utils.ShakeDetector
  */
 class ShakeOverlayService : Service() {
     private val channelId = javaClass.simpleName
+    /** 全局唯一面板宿主：两个服务共用，杜绝多窗口 */
     private lateinit var overlay: ShakeOverlayHost
     private var detector: ShakeDetector? = null
     private var sensorWarningShown = false
@@ -77,7 +78,7 @@ class ShakeOverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        overlay = ShakeOverlayHost(this)
+        overlay = OverlayPanelManager.get(this)
         detector = ShakeDetector(this, sensitivity = { HailData.shakeSensitivity }) { onShake() }
         ContextCompat.registerReceiver(
             this,
@@ -106,7 +107,7 @@ class ShakeOverlayService : Service() {
         if (intent?.action == ACTION_DISABLE) {
             HailData.shakeOverlay = false
             stopListening()
-            runCatching { overlay.release() }
+            runCatching { overlay.hide() }
             stopSelf()
             return START_NOT_STICKY
         }
@@ -129,7 +130,10 @@ class ShakeOverlayService : Service() {
                 .unregisterOnSharedPreferenceChangeListener(prefListener)
         }
         runCatching { unregisterReceiver(screenReceiver) }
-        runCatching { overlay.release() }
+        // 面板是全局共用的：只有两个服务都不要了才真正摘窗口
+        runCatching {
+            if (!HailData.shakeOverlay && !HailData.shakeFloatingBall) OverlayPanelManager.release()
+        }
         runCatching { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) }
         super.onDestroy()
     }
@@ -158,11 +162,7 @@ class ShakeOverlayService : Service() {
          * 面板是开关语义，且与悬浮球共用同一块屏幕位置：
          * 任意一方已经显示 → 收起；都没有 → 先收起别人的再显示自己的，避免两层叠在一起。
          */
-        if (ShakeOverlayHosts.anyShowing) ShakeOverlayHosts.hideAll()
-        else {
-            ShakeOverlayHosts.hideOthers(overlay)
-            overlay.show()
-        }
+        if (overlay.isShowing) overlay.hide() else overlay.show()
     }
 
     private fun buildNotification() = NotificationCompat.Builder(this, channelId)

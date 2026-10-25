@@ -15,6 +15,7 @@ import com.aistra.hail.services.AutoFreezeService
 import com.aistra.hail.services.FloatingBallService
 import com.aistra.hail.services.RecentTaskFreezeService
 import com.aistra.hail.services.ShakeOverlayService
+import com.aistra.hail.ui.overlay.OverlayPanelManager
 import com.aistra.hail.utils.HDhizuku
 import com.aistra.hail.utils.HTarget
 import com.aistra.hail.utils.HUI
@@ -60,8 +61,9 @@ class HailApp : Application() {
     fun setFloatingBallService(enabled: Boolean = HailData.shakeFloatingBall, context: Context = app) {
         val intent = Intent(app, FloatingBallService::class.java)
         if (!enabled) {
-            // 先把开关落盘：服务里的偏好监听据此立即摘窗口，不依赖 stopService 是否成功
+            // 先把开关落盘并立刻收起共用面板：不等服务销毁，避免启停交错时窗口残留
             HailData.shakeFloatingBall = false
+            OverlayPanelManager.peek()?.hide()
             context.stopService(intent)
             return
         }
@@ -72,8 +74,9 @@ class HailApp : Application() {
     fun setShakeOverlayService(enabled: Boolean = HailData.shakeOverlay, context: Context = app) {
         val intent = Intent(app, ShakeOverlayService::class.java)
         if (!enabled) {
-            // 先把开关落盘：服务里的偏好监听据此立即收起面板，不依赖 stopService 是否成功
+            // 先把开关落盘并立刻收起共用面板：不等服务销毁，避免启停交错时窗口残留
             HailData.shakeOverlay = false
+            OverlayPanelManager.peek()?.hide()
             context.stopService(intent)
             return
         }

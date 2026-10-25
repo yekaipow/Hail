@@ -27,8 +27,8 @@ import androidx.core.content.ContextCompat
 import com.aistra.hail.R
 import com.aistra.hail.app.HailData
 import com.aistra.hail.ui.main.MainActivity
+import com.aistra.hail.ui.overlay.OverlayPanelManager
 import com.aistra.hail.ui.overlay.ShakeOverlayHost
-import com.aistra.hail.ui.overlay.ShakeOverlayHosts
 import com.aistra.hail.utils.HActions
 import com.aistra.hail.utils.HTarget
 import com.aistra.hail.utils.HUI
@@ -42,6 +42,7 @@ import kotlin.math.abs
  */
 class FloatingBallService : Service() {
     private val channelId = javaClass.simpleName
+    /** 全局唯一面板宿主：与摇一摇共用，杜绝多窗口 */
     private lateinit var panelHost: ShakeOverlayHost
     private var floatingBall: View? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -67,7 +68,7 @@ class FloatingBallService : Service() {
             HailData.SHAKE_FLOATING_BALL -> if (!HailData.shakeFloatingBall) {
                 mainHandler.post {
                     detachFloatingBall()
-                    panelHost.release()
+                    panelHost.hide()
                     stopSelf()
                 }
             }
@@ -78,7 +79,7 @@ class FloatingBallService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        panelHost = ShakeOverlayHost(this)
+        panelHost = OverlayPanelManager.get(this)
         ContextCompat.registerReceiver(
             this,
             screenReceiver,
@@ -103,7 +104,7 @@ class FloatingBallService : Service() {
         if (intent?.action == ACTION_DISABLE) {
             HailData.shakeFloatingBall = false
             detachFloatingBall()
-            runCatching { panelHost.release() }
+            runCatching { panelHost.hide() }
             stopSelf()
             return START_NOT_STICKY
         }
@@ -124,7 +125,10 @@ class FloatingBallService : Service() {
     override fun onDestroy() {
         // 窗口归进程所有：服务停了进程还在时，没摘掉的窗口会一直留在屏幕上，所以第一件事就摘
         runCatching { detachFloatingBall() }
-        runCatching { panelHost.release() }
+        runCatching { panelHost.hide() }
+        runCatching {
+            if (!HailData.shakeOverlay && !HailData.shakeFloatingBall) OverlayPanelManager.release()
+        }
         runCatching {
             androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
                 .unregisterOnSharedPreferenceChangeListener(prefListener)
@@ -215,11 +219,7 @@ class FloatingBallService : Service() {
                              * 点击悬浮球 = 面板开关，且与摇一摇共用同一块面板位：
                              * 任意一方已经显示 → 收起；都没有 → 先收起别人的再显示自己的。
                              */
-                            if (ShakeOverlayHosts.anyShowing) ShakeOverlayHosts.hideAll()
-                            else {
-                                ShakeOverlayHosts.hideOthers(panelHost)
-                                panelHost.show()
-                            }
+                            if (panelHost.isShowing) panelHost.hide() else panelHost.show()
                         }
                     }
                 }

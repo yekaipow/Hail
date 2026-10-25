@@ -38,10 +38,6 @@ class ShakeOverlayHost(private val context: Context) {
 
     val isShowing: Boolean get() = showing
 
-    init {
-        ShakeOverlayHosts.register(this)
-    }
-
     fun show(): Boolean {
         if (showing) return true
         if (!Settings.canDrawOverlays(context)) {
@@ -103,7 +99,6 @@ class ShakeOverlayHost(private val context: Context) {
             runCatching { windowManager.removeViewImmediate(panelView) }
             runCatching { panelView.release() }
         }
-        ShakeOverlayHosts.unregister(this)
     }
 
     private fun createPanel() = ShakeOverlayPanel(
