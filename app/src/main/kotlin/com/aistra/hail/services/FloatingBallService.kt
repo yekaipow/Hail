@@ -73,7 +73,8 @@ class FloatingBallService : Service() {
             IntentFilter(Intent.ACTION_SCREEN_OFF),
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
-        attachFloatingBall()
+        // 服务被系统重建时也要尊重开关：关掉就不建球（onStartCommand 随后 stopSelf）
+        if (HailData.shakeFloatingBall) attachFloatingBall()
         androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
             .registerOnSharedPreferenceChangeListener(prefListener)
     }
@@ -86,6 +87,11 @@ class FloatingBallService : Service() {
             buildNotification(),
             if (HTarget.U) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
         )
+        // 开关已经关掉（系统重启、残留启动等）时不要再活过来
+        if (!HailData.shakeFloatingBall) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
         // 悬浮窗权限被回收时直接停掉，避免无效常驻
         if (!Settings.canDrawOverlays(this)) {
             stopSelf()
@@ -96,14 +102,15 @@ class FloatingBallService : Service() {
     }
 
     override fun onDestroy() {
+        // 窗口归进程所有：服务停了进程还在时，没摘掉的窗口会一直留在屏幕上，所以第一件事就摘
+        runCatching { detachFloatingBall() }
+        runCatching { panelHost.release() }
         runCatching {
             androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
                 .unregisterOnSharedPreferenceChangeListener(prefListener)
         }
-        detachFloatingBall()
         runCatching { unregisterReceiver(screenReceiver) }
-        panelHost.release()
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        runCatching { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) }
         super.onDestroy()
     }
 
@@ -113,6 +120,8 @@ class FloatingBallService : Service() {
         val density = resources.displayMetrics.density
         val size = (HailData.floatingBallSize * density).toInt().coerceAtLeast(1)
         val metrics = resources.displayMetrics
+        // 尺寸小于阈值：窗口推到屏幕外；必须配 FLAG_LAYOUT_NO_LIMITS，否则系统会把越界坐标限制回屏内
+        val offscreen = HailData.floatingBallSize < MIN_VISIBLE_SIZE_DP
         val ball = ImageView(this).apply {
             setImageDrawable(applicationInfo.loadIcon(packageManager))
             background = GradientDrawable().apply {
@@ -127,12 +136,12 @@ class FloatingBallService : Service() {
             size,
             if (HTarget.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             else WindowManager.LayoutParams.TYPE_PHONE,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            if (offscreen) WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            else WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            // 尺寸小于阈值时把窗口推到屏幕外很远的地方：窗口仍在（保活），但绝对看不见
-            x = if (HailData.floatingBallSize < MIN_VISIBLE_SIZE_DP) metrics.widthPixels + OFFSCREEN_OFFSET_PX
+            x = if (offscreen) metrics.widthPixels + OFFSCREEN_OFFSET_PX
             else if (HailData.shakeFloatingBallX != Int.MIN_VALUE) HailData.shakeFloatingBallX
             else metrics.widthPixels - size - (BALL_MARGIN_DP * density).toInt()
             y = if (HailData.shakeFloatingBallY != Int.MIN_VALUE) HailData.shakeFloatingBallY
