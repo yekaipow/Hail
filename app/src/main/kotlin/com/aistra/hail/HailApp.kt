@@ -6,6 +6,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Handler
+import android.os.Looper
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
@@ -64,7 +66,7 @@ class HailApp : Application() {
             // 先把开关落盘并立刻收起共用面板：不等服务销毁，避免启停交错时窗口残留
             HailData.shakeFloatingBall = false
             OverlayPanelManager.peek()?.hide()
-            context.stopService(intent)
+            stopServiceNow(intent, context)
             return
         }
         runCatching { ContextCompat.startForegroundService(context, intent) }
@@ -77,12 +79,24 @@ class HailApp : Application() {
             // 先把开关落盘并立刻收起共用面板：不等服务销毁，避免启停交错时窗口残留
             HailData.shakeOverlay = false
             OverlayPanelManager.peek()?.hide()
-            context.stopService(intent)
+            stopServiceNow(intent, context)
             return
         }
         // 后台启动前台服务可能被系统拒绝（Android 12+），失败时提示而不是崩溃
         runCatching { ContextCompat.startForegroundService(context, intent) }
             .onFailure { HUI.showToast(R.string.shake_overlay_start_failed) }
+    }
+
+    /**
+     * 关闭开关时真正销毁服务。
+     *
+     * 开关连点会让 startForegroundService 请求排在 stopService 之后生效，服务被重新拉起；
+     * 这里补一次延迟 stop，保证关闭动作的最终结果是「服务不存在」。
+     * 服务侧也有双保险：onStartCommand 发现开关已关会 stopSelf。
+     */
+    private fun stopServiceNow(intent: Intent, context: Context) {
+        context.stopService(intent)
+        Handler(Looper.getMainLooper()).postDelayed({ app.stopService(intent) }, 400)
     }
 
     fun setAppTheme(theme: String) {

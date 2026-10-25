@@ -286,12 +286,8 @@ class SettingsFragment : MainFragment(), MenuProvider {
             listPreference(
                 key = HailData.SHAKE_SAMPLE_INTERVAL,
                 defaultValue = "200",
-                onValueChange = { _, value ->
-                    // 采样周期变了需要重新注册传感器
-                    app.setShakeOverlayService(false)
-                    if (shakeOverlay.value) app.setShakeOverlayService(true)
-                    true
-                },
+                // 只写偏好：服务内监听该键会重新注册传感器，不再重启服务（stop→start 会造成启停交错）
+                onValueChange = { _, _ -> true },
                 values = mutableListOf("20", "60", "100", "200", "500"),
                 entriesId = R.array.shake_sample_rate_entries,
                 titleId = R.string.shake_sample_rate,
