@@ -38,7 +38,6 @@ class ShakeOverlayService : Service() {
     /** 全局唯一面板宿主：两个服务共用，杜绝多窗口 */
     private lateinit var overlay: ShakeOverlayHost
     private var detector: ShakeDetector? = null
-    private var sensorWarningShown = false
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val prefListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -79,7 +78,10 @@ class ShakeOverlayService : Service() {
     override fun onCreate() {
         super.onCreate()
         overlay = OverlayPanelManager.get(this)
+        // 进程内同一时刻只允许一个活跃检测器：启停交错 / START_STICKY 重建时，先停旧实例，避免重复注册传感器
+        activeDetector?.stop()
         detector = ShakeDetector(this, sensitivity = { HailData.shakeSensitivity }) { onShake() }
+        activeDetector = detector
         ContextCompat.registerReceiver(
             this,
             screenReceiver,
@@ -124,16 +126,15 @@ class ShakeOverlayService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        if (activeDetector === detector) activeDetector = null
         runCatching { stopListening() }
         runCatching {
             androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
                 .unregisterOnSharedPreferenceChangeListener(prefListener)
         }
         runCatching { unregisterReceiver(screenReceiver) }
-        // 面板是全局共用的：只有两个服务都不要了才真正摘窗口
-        runCatching {
-            if (!HailData.shakeOverlay && !HailData.shakeFloatingBall) OverlayPanelManager.release()
-        }
+        // 释放面板引用：引用计数归零（两个服务都销毁）时才真正摘窗口
+        runCatching { OverlayPanelManager.release() }
         runCatching { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) }
         super.onDestroy()
     }
@@ -205,5 +206,12 @@ class ShakeOverlayService : Service() {
 
         /** 通知上的「关闭」按钮 */
         const val ACTION_DISABLE = "com.aistra.hail.action.DISABLE_SHAKE_OVERLAY"
+
+        /** 进程级：无传感器提示只弹一次，服务重建不重复 */
+        private var sensorWarningShown = false
+
+        /** 进程级：当前活跃的摇一摇检测器，服务重建时先停旧实例，防止重复注册传感器 */
+        @Volatile
+        private var activeDetector: ShakeDetector? = null
     }
 }

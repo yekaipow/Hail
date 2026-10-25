@@ -46,6 +46,7 @@ class FloatingBallService : Service() {
     private lateinit var panelHost: ShakeOverlayHost
     private var floatingBall: View? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var rebuildBallRunnable: Runnable? = null
     private val windowManager by lazy { getSystemService(WINDOW_SERVICE) as WindowManager }
 
     private val screenReceiver = object : BroadcastReceiver() {
@@ -57,11 +58,11 @@ class FloatingBallService : Service() {
 
     private val prefListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
-            // 大小改变后重建悬浮球，位置从 HailData 读回，不会跳位
+            // 大小改变后重建悬浮球（防抖合并连续变化，拖动滑杆不会反复拆建）
             HailData.FLOATING_BALL_SIZE -> {
-                // 始终先拆后建：隐藏状态下改回大尺寸也要重新出现
-                detachFloatingBall()
-                attachFloatingBall()
+                rebuildBallRunnable?.let { mainHandler.removeCallbacks(it) }
+                rebuildBallRunnable = Runnable { rebuildFloatingBall() }
+                    .also { mainHandler.postDelayed(it, REBUILD_DEBOUNCE_MS) }
             }
             // 开关被关掉：不管 stopService 有没有生效，这里先摘窗口再自杀，杜绝残留
             // （偏好回调可能不在主线程，窗口操作统一切到主线程）
@@ -123,12 +124,13 @@ class FloatingBallService : Service() {
     }
 
     override fun onDestroy() {
+        // 清理未决的防抖重建，避免服务销毁后回调仍触发
+        rebuildBallRunnable?.let { mainHandler.removeCallbacks(it) }
         // 窗口归进程所有：服务停了进程还在时，没摘掉的窗口会一直留在屏幕上，所以第一件事就摘
         runCatching { detachFloatingBall() }
         runCatching { panelHost.hide() }
-        runCatching {
-            if (!HailData.shakeOverlay && !HailData.shakeFloatingBall) OverlayPanelManager.release()
-        }
+        // 释放面板引用：引用计数归零（两个服务都销毁）时才真正摘窗口
+        runCatching { OverlayPanelManager.release() }
         runCatching {
             androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
                 .unregisterOnSharedPreferenceChangeListener(prefListener)
@@ -139,13 +141,20 @@ class FloatingBallService : Service() {
     }
 
     private fun attachFloatingBall() {
-        if (floatingBall != null) return
         if (!Settings.canDrawOverlays(this)) return
         val density = resources.displayMetrics.density
         val size = (HailData.floatingBallSize * density).toInt().coerceAtLeast(1)
         val metrics = resources.displayMetrics
         // 尺寸小于阈值：窗口推到屏幕外；必须配 FLAG_LAYOUT_NO_LIMITS，否则系统会把越界坐标限制回屏内
         val offscreen = HailData.floatingBallSize < MIN_VISIBLE_SIZE_DP
+        val params = buildBallParams(size, metrics, offscreen, density)
+        // 已有悬浮球（上次拆建失败等残留）则复用更新，绝不再 add 一个新窗口，避免多球叠加
+        val existing = floatingBall
+        if (existing != null) {
+            if (existing.parent != null) runCatching { windowManager.updateViewLayout(existing, params) }
+            else runCatching { windowManager.addView(existing, params) }
+            return
+        }
         val ball = ImageView(this).apply {
             setImageDrawable(applicationInfo.loadIcon(packageManager))
             background = GradientDrawable().apply {
@@ -154,22 +163,6 @@ class FloatingBallService : Service() {
             }
             scaleType = ImageView.ScaleType.FIT_CENTER
             setPadding(size / 5, size / 5, size / 5, size / 5)
-        }
-        val params = WindowManager.LayoutParams(
-            size,
-            size,
-            if (HTarget.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else WindowManager.LayoutParams.TYPE_PHONE,
-            if (offscreen) WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-            else WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = if (offscreen) metrics.widthPixels + OFFSCREEN_OFFSET_PX
-            else if (HailData.shakeFloatingBallX != Int.MIN_VALUE) HailData.shakeFloatingBallX
-            else metrics.widthPixels - size - (BALL_MARGIN_DP * density).toInt()
-            y = if (HailData.shakeFloatingBallY != Int.MIN_VALUE) HailData.shakeFloatingBallY
-            else metrics.heightPixels / 3
         }
         var startX = 0
         var startY = 0
@@ -232,10 +225,40 @@ class FloatingBallService : Service() {
         }
     }
 
+    /** 重建悬浮球：始终先拆后建，隐藏状态下改回大尺寸也要重新出现 */
+    private fun rebuildFloatingBall() {
+        detachFloatingBall()
+        attachFloatingBall()
+    }
+
+    /** 计算悬浮球窗口参数：尺寸、屏幕外偏移、记忆位置 */
+    private fun buildBallParams(
+        size: Int,
+        metrics: android.util.DisplayMetrics,
+        offscreen: Boolean,
+        density: Float
+    ): WindowManager.LayoutParams = WindowManager.LayoutParams(
+        size,
+        size,
+        if (HTarget.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        else WindowManager.LayoutParams.TYPE_PHONE,
+        if (offscreen) WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        else WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+        PixelFormat.TRANSLUCENT
+    ).apply {
+        gravity = Gravity.TOP or Gravity.START
+        x = if (offscreen) metrics.widthPixels + OFFSCREEN_OFFSET_PX
+        else if (HailData.shakeFloatingBallX != Int.MIN_VALUE) HailData.shakeFloatingBallX
+        else metrics.widthPixels - size - (BALL_MARGIN_DP * density).toInt()
+        y = if (HailData.shakeFloatingBallY != Int.MIN_VALUE) HailData.shakeFloatingBallY
+        else metrics.heightPixels / 3
+    }
+
     private fun detachFloatingBall() {
         val ball = floatingBall ?: return
         floatingBall = null
-        runCatching { windowManager.removeView(ball) }
+        // removeViewImmediate：立即摘窗口，避免与服务销毁的时序交错残留
+        runCatching { windowManager.removeViewImmediate(ball) }
     }
 
     /** 长按悬浮球：按设置执行全部冻结或锁屏，阻塞调用放在后台线程 */
@@ -295,6 +318,9 @@ class FloatingBallService : Service() {
         /** 移出屏幕时的横向偏移（px），足够远以保证任何 ROM 都不会把它拉回可见区域 */
         const val OFFSCREEN_OFFSET_PX = 500
         const val BALL_LONG_PRESS_MS = 500L
+
+        /** 尺寸变化重建的防抖窗口（ms），合并滑杆拖动期间的连续变化 */
+        const val REBUILD_DEBOUNCE_MS = 300L
 
         /** 半透明深灰圆底，深浅主题下都能看清 */
         const val BALL_BACKGROUND = 0x99333333.toInt()

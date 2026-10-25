@@ -11,21 +11,31 @@ import android.content.Context
  *
  * 这里只保留一个宿主实例（用 Application context 创建，窗口归进程所有），
  * 两个服务都向它取用，物理上保证永远只有一个面板窗口。
+ *
+ * 采用引用计数管理生命周期：每次 [get] +1，每次 [release] -1，
+ * 只有引用归零（两个服务都销毁）时才真正摘窗口。
+ * 这比依据偏好开关判断更准确：偏好反映的是「用户想不想开」，而计数反映的是
+ * 「服务此刻是否真的还在用面板」，能避免启停交错时面板被提前释放。
  */
 object OverlayPanelManager {
     private var instance: ShakeOverlayHost? = null
+    private var refs = 0
 
-    /** 取（必要时创建）唯一宿主 */
-    fun get(context: Context): ShakeOverlayHost = instance ?: run {
-        ShakeOverlayHost(context.applicationContext).also { instance = it }
+    /** 取（必要时创建）唯一宿主；每次取用 +1 引用 */
+    fun get(context: Context): ShakeOverlayHost {
+        refs++
+        return instance ?: ShakeOverlayHost(context.applicationContext).also { instance = it }
     }
 
     /** 已存在则返回，不会创建 */
     fun peek(): ShakeOverlayHost? = instance
 
-    /** 两个服务都不再需要面板时，彻底摘掉窗口 */
+    /** 释放一个引用；引用归零（两个服务都销毁）时才彻底摘掉窗口 */
     fun release() {
-        instance?.release()
-        instance = null
+        if (refs > 0) refs--
+        if (refs == 0) {
+            instance?.release()
+            instance = null
+        }
     }
 }
