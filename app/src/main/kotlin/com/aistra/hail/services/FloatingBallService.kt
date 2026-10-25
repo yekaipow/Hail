@@ -66,7 +66,7 @@ class FloatingBallService : Service() {
             HailData.SHAKE_FLOATING_BALL -> if (!HailData.shakeFloatingBall) {
                 mainHandler.post {
                     detachFloatingBall()
-                    panelHost.release()
+                    runCatching { panelHost.release() }
                     stopSelf()
                 }
             }
@@ -219,7 +219,8 @@ class FloatingBallService : Service() {
     private fun detachFloatingBall() {
         val ball = floatingBall ?: return
         floatingBall = null
-        runCatching { windowManager.removeView(ball) }
+        // 同步移除：异步 removeView 在服务马上被销毁时可能还没执行，窗口会残留到进程结束
+        runCatching { windowManager.removeViewImmediate(ball) }
     }
 
     /** 长按悬浮球：按设置执行全部冻结或锁屏，阻塞调用放在后台线程 */
