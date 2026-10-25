@@ -159,10 +159,11 @@ class ShakeOverlayService : Service() {
         // 锁屏界面不弹面板（否则会盖在锁屏上）
         if (getSystemService<KeyguardManager>()?.isKeyguardLocked == true) return
         /*
-         * 面板是开关语义，且与悬浮球共用同一块屏幕位置：
-         * 任意一方已经显示 → 收起；都没有 → 先收起别人的再显示自己的，避免两层叠在一起。
+         * 摇一摇只负责打开：窗口已存在时，无论摇多快、命中多少次，全部抛弃。
+         * 关闭交给点面板外部 / ✕ / 悬浮球。去重只有一行 if，不存在任何会卡住的状态。
          */
-        if (overlay.isShowing) overlay.hide() else overlay.show()
+        if (overlay.isShowing) return
+        overlay.show()
     }
 
     private fun buildNotification() = NotificationCompat.Builder(this, channelId)
