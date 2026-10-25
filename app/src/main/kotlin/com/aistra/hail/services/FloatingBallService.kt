@@ -256,9 +256,13 @@ class FloatingBallService : Service() {
 
     private fun detachFloatingBall() {
         val ball = floatingBall ?: return
-        floatingBall = null
-        // removeViewImmediate：立即摘窗口，避免与服务销毁的时序交错残留
-        runCatching { windowManager.removeViewImmediate(ball) }
+        // 先摘窗口再清字段：只有确认窗口已不在屏上（摘除成功或本就不在）才置 null。
+        // 若摘除抛异常且窗口确实还在，则保留 floatingBall 引用，让下一次 detach 继续重试，
+        // 避免「字段已空、窗口残留」导致关闭后悬浮球永远销毁不掉。
+        runCatching {
+            if (ball.parent != null) windowManager.removeViewImmediate(ball)
+        }
+        if (ball.parent == null) floatingBall = null
     }
 
     /** 长按悬浮球：按设置执行全部冻结或锁屏，阻塞调用放在后台线程 */
