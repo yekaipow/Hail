@@ -29,6 +29,10 @@ class ShakeOverlayHost(private val context: Context) {
 
     val isShowing: Boolean get() = view != null
 
+    init {
+        ShakeOverlayHosts.register(this)
+    }
+
     fun show(): Boolean {
         if (view != null) return true
         if (!Settings.canDrawOverlays(context)) {
@@ -77,6 +81,7 @@ class ShakeOverlayHost(private val context: Context) {
     /** 服务销毁时调用 */
     fun release() {
         hide()
+        ShakeOverlayHosts.unregister(this)
     }
 
     private fun moveBy(dx: Float, dy: Float) {
@@ -105,7 +110,10 @@ class ShakeOverlayHost(private val context: Context) {
             if (HTarget.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             else WindowManager.LayoutParams.TYPE_PHONE,
             // 不抢焦点：不打断前台应用的输入；面板内仍可正常点击和滚动
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            // WATCH_OUTSIDE_TOUCH：点面板外的任意位置会派发 ACTION_OUTSIDE，用来关闭面板
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START

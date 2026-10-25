@@ -28,6 +28,7 @@ import com.aistra.hail.R
 import com.aistra.hail.app.HailData
 import com.aistra.hail.ui.main.MainActivity
 import com.aistra.hail.ui.overlay.ShakeOverlayHost
+import com.aistra.hail.ui.overlay.ShakeOverlayHosts
 import com.aistra.hail.utils.HActions
 import com.aistra.hail.utils.HTarget
 import com.aistra.hail.utils.HUI
@@ -98,6 +99,14 @@ class FloatingBallService : Service() {
             buildNotification(),
             if (HTarget.U) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
         )
+        // 通知上的「关闭」：落盘开关、摘窗口再退出
+        if (intent?.action == ACTION_DISABLE) {
+            HailData.shakeFloatingBall = false
+            detachFloatingBall()
+            runCatching { panelHost.release() }
+            stopSelf()
+            return START_NOT_STICKY
+        }
         // 开关已经关掉（系统重启、残留启动等）时不要再活过来
         if (!HailData.shakeFloatingBall) {
             stopSelf()
@@ -202,8 +211,15 @@ class FloatingBallService : Service() {
                             HailData.shakeFloatingBallX = params.x
                             HailData.shakeFloatingBallY = params.y
                         } else if (!longPressed) {
-                            // 点击悬浮球 = 悬浮窗面板的开关
-                            if (panelHost.isShowing) panelHost.hide() else panelHost.show()
+                            /*
+                             * 点击悬浮球 = 面板开关，且与摇一摇共用同一块面板位：
+                             * 任意一方已经显示 → 收起；都没有 → 先收起别人的再显示自己的。
+                             */
+                            if (ShakeOverlayHosts.anyShowing) ShakeOverlayHosts.hideAll()
+                            else {
+                                ShakeOverlayHosts.hideOthers(panelHost)
+                                panelHost.show()
+                            }
                         }
                     }
                 }
@@ -242,6 +258,16 @@ class FloatingBallService : Service() {
         .setCategory(NotificationCompat.CATEGORY_SERVICE)
         .setPriority(NotificationCompat.PRIORITY_LOW)
         .setOngoing(true)
+        .addAction(
+            0,
+            getString(R.string.action_disable),
+            PendingIntent.getService(
+                this,
+                2,
+                Intent(this, FloatingBallService::class.java).setAction(ACTION_DISABLE),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+        )
         .setContentIntent(
             PendingIntent.getActivity(
                 this,
@@ -272,5 +298,8 @@ class FloatingBallService : Service() {
 
         /** 半透明深灰圆底，深浅主题下都能看清 */
         const val BALL_BACKGROUND = 0x99333333.toInt()
+
+        /** 通知上的「关闭」按钮 */
+        const val ACTION_DISABLE = "com.aistra.hail.action.DISABLE_FLOATING_BALL"
     }
 }

@@ -1,5 +1,6 @@
 package com.aistra.hail.services
 
+import android.app.KeyguardManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.BroadcastReceiver
@@ -7,7 +8,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
@@ -19,6 +22,7 @@ import com.aistra.hail.R
 import com.aistra.hail.app.HailData
 import com.aistra.hail.ui.main.MainActivity
 import com.aistra.hail.ui.overlay.ShakeOverlayHost
+import com.aistra.hail.ui.overlay.ShakeOverlayHosts
 import com.aistra.hail.utils.HTarget
 import com.aistra.hail.utils.HUI
 import com.aistra.hail.utils.ShakeDetector
@@ -34,8 +38,24 @@ class ShakeOverlayService : Service() {
     private lateinit var overlay: ShakeOverlayHost
     private var detector: ShakeDetector? = null
     private var sensorWarningShown = false
+    private val mainHandler = Handler(Looper.getMainLooper())
 
-
+    private val prefListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        when (key) {
+            // 采样率改了就重新注册传感器，否则要等下次亮屏才会生效
+            HailData.SHAKE_SAMPLE_INTERVAL -> if (isInteractive()) {
+                stopListening()
+                startListening()
+            }
+            // 开关被关掉：不管 stopService 有没有生效，自己收起面板并退出
+            HailData.SHAKE_OVERLAY -> if (!HailData.shakeOverlay) {
+                mainHandler.post {
+                    runCatching { overlay.hide() }
+                    stopSelf()
+                }
+            }
+        }
+    }
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -69,6 +89,8 @@ class ShakeOverlayService : Service() {
             },
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
+        androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+            .registerOnSharedPreferenceChangeListener(prefListener)
         if (isInteractive()) startListening()
     }
 
@@ -80,6 +102,19 @@ class ShakeOverlayService : Service() {
             buildNotification(),
             if (HTarget.U) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
         )
+        // 通知上的「关闭」：落盘开关再退出，回 App 也不会自启
+        if (intent?.action == ACTION_DISABLE) {
+            HailData.shakeOverlay = false
+            stopListening()
+            runCatching { overlay.release() }
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        // 开关已经关掉（系统重启、残留启动等）时不要再活过来
+        if (!HailData.shakeOverlay) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
         // 从设置页重启服务时屏幕可能已经亮着
         if (isInteractive()) startListening()
         return START_STICKY
@@ -88,10 +123,14 @@ class ShakeOverlayService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        stopListening()
+        runCatching { stopListening() }
+        runCatching {
+            androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+                .unregisterOnSharedPreferenceChangeListener(prefListener)
+        }
         runCatching { unregisterReceiver(screenReceiver) }
-        overlay.release()
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        runCatching { overlay.release() }
+        runCatching { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) }
         super.onDestroy()
     }
 
@@ -113,8 +152,17 @@ class ShakeOverlayService : Service() {
 
     private fun onShake() {
         if (!isInteractive()) return
-        // 摇一摇作为面板开关：面板已显示时再摇就收起，与悬浮球点击行为一致
-        if (overlay.isShowing) overlay.hide() else overlay.show()
+        // 锁屏界面不弹面板（否则会盖在锁屏上）
+        if (getSystemService<KeyguardManager>()?.isKeyguardLocked == true) return
+        /*
+         * 面板是开关语义，且与悬浮球共用同一块屏幕位置：
+         * 任意一方已经显示 → 收起；都没有 → 先收起别人的再显示自己的，避免两层叠在一起。
+         */
+        if (ShakeOverlayHosts.anyShowing) ShakeOverlayHosts.hideAll()
+        else {
+            ShakeOverlayHosts.hideOthers(overlay)
+            overlay.show()
+        }
     }
 
     private fun buildNotification() = NotificationCompat.Builder(this, channelId)
@@ -124,6 +172,16 @@ class ShakeOverlayService : Service() {
         .setCategory(NotificationCompat.CATEGORY_SERVICE)
         .setPriority(NotificationCompat.PRIORITY_LOW)
         .setOngoing(true)
+        .addAction(
+            0,
+            getString(R.string.action_disable),
+            PendingIntent.getService(
+                this,
+                1,
+                Intent(this, ShakeOverlayService::class.java).setAction(ACTION_DISABLE),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+        )
         .setContentIntent(
             PendingIntent.getActivity(
                 this,
@@ -143,5 +201,8 @@ class ShakeOverlayService : Service() {
 
     private companion object {
         const val NOTIFICATION_ID = 101
+
+        /** 通知上的「关闭」按钮 */
+        const val ACTION_DISABLE = "com.aistra.hail.action.DISABLE_SHAKE_OVERLAY"
     }
 }

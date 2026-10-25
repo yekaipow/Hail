@@ -106,8 +106,8 @@ class ShakeDetector(
         /** 重力低通滤波系数，越接近 1 越平滑 */
         const val ALPHA = 0.8f
 
-        /** 两次触发的最小间隔，避免一次摇晃连续弹出多次 */
-        const val COOLDOWN = 1200L
+        /** 两次触发的最小间隔：面板是开关语义，间隔太长会让「再摇一次收起」很难触发 */
+        const val COOLDOWN = 700L
 
         /** 加速度阈值（m/s²）：灵敏度最高时轻晃即可，最低时需明显甩动 */
         const val LIGHT_THRESHOLD = 9f

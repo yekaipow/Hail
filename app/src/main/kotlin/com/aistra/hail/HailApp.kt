@@ -72,8 +72,8 @@ class HailApp : Application() {
     fun setShakeOverlayService(enabled: Boolean = HailData.shakeOverlay, context: Context = app) {
         val intent = Intent(app, ShakeOverlayService::class.java)
         if (!enabled) {
-            // 先把开关落盘：服务里的偏好监听据此立即摘窗口，不依赖 stopService 是否成功
-            HailData.shakeFloatingBall = false
+            // 先把开关落盘：服务里的偏好监听据此立即收起面板，不依赖 stopService 是否成功
+            HailData.shakeOverlay = false
             context.stopService(intent)
             return
         }

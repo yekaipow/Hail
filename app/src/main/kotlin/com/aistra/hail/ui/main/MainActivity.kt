@@ -44,8 +44,8 @@ class MainActivity : AppCompatActivity(), NavController.OnDestinationChangedList
         }
         // 保活：服务被系统/ROM 修掉后，回到 App 时重新拉起（重复启动是幂等的）
         if (Settings.canDrawOverlays(this)) {
-            if (HailData.shakeOverlay) app.setShakeOverlayService(true)
             // 双向同步：开关关掉后如果服务还活着（含残留窗口），这里会把它停掉
+            app.setShakeOverlayService(HailData.shakeOverlay)
             app.setFloatingBallService(HailData.shakeFloatingBall)
             if (HailData.recentTaskFreeze) app.setRecentTaskFreezeService(true)
         }
