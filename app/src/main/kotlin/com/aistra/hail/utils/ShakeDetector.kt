@@ -41,6 +41,14 @@ class ShakeDetector(
     private var lastShakeTime = 0L
     private var listening = false
 
+    /**
+     * 触发后必须先「安静」一段时间才允许再次触发。
+     * 只靠固定冷却不够：一次真实摇晃会持续 0.5~1.5 秒，冷却一过就会在同一次摇晃里再次命中，
+     * 表现成「摇一下弹出好几个面板」（开→关→开反复切换）。
+     */
+    private var armed = true
+    private var quietSince = 0L
+
     val isSupported: Boolean get() = sensor != null
 
     /** 当前生效的采样周期（毫秒），供界面展示 */
@@ -53,6 +61,8 @@ class ShakeDetector(
         if (listening) return true
         gravity.fill(0f)
         lastShakeTime = 0L
+        armed = true
+        quietSince = 0L
         // 采样周期由设置控制：越小越灵敏、越耗电；20ms 接近 GAME，200ms 接近 NORMAL
         val intervalUs = sampleIntervalMs * 1000
         listening = manager.registerListener(this, target, intervalUs)
@@ -66,11 +76,9 @@ class ShakeDetector(
     }
 
     override fun onSensorChanged(event: SensorEvent) {
-        val time = now()
-        // 冷却期内直接丢弃，省掉后续计算
-        if (time - lastShakeTime < COOLDOWN) return
         val v = event.values
-        val hit = if (useAccelerometer) {
+        // 不管当前能不能触发，重力估计都要持续更新，否则滤波会失真
+        val magnitude = if (useAccelerometer) {
             // 剥离重力，只看线性加速度
             gravity[0] = ALPHA * gravity[0] + (1 - ALPHA) * v[0]
             gravity[1] = ALPHA * gravity[1] + (1 - ALPHA) * v[1]
@@ -78,12 +86,31 @@ class ShakeDetector(
             val x = v[0] - gravity[0]
             val y = v[1] - gravity[1]
             val z = v[2] - gravity[2]
-            sqrt(x * x + y * y + z * z) > accelerometerThreshold()
+            sqrt(x * x + y * y + z * z)
         } else {
             // 回退陀螺仪（设备无加速度计的极少数情况）
-            sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) > gyroscopeThreshold()
+            sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
         }
-        if (!hit) return
+        val threshold = if (useAccelerometer) accelerometerThreshold() else gyroscopeThreshold()
+        val time = now()
+        // 兜底冷却，压掉高频抖动连击
+        if (time - lastShakeTime < COOLDOWN) return
+        if (!armed) {
+            // 还没安静下来：这次摇晃的余波，全部忽略；安静够久才重新武装
+            if (magnitude < threshold * REARM_RATIO) {
+                if (quietSince == 0L) quietSince = time
+                if (time - quietSince >= REARM_QUIET_MS) {
+                    armed = true
+                    quietSince = 0L
+                }
+            } else {
+                quietSince = 0L
+            }
+            return
+        }
+        if (magnitude <= threshold) return
+        armed = false
+        quietSince = 0L
         lastShakeTime = time
         onShake()
     }
@@ -106,8 +133,14 @@ class ShakeDetector(
         /** 重力低通滤波系数，越接近 1 越平滑 */
         const val ALPHA = 0.8f
 
-        /** 两次触发的最小间隔：面板是开关语义，间隔太长会让「再摇一次收起」很难触发 */
-        const val COOLDOWN = 700L
+        /** 兜底冷却：命中后的最短间隔，压掉同一瞬间的多次命中 */
+        const val COOLDOWN = 400L
+
+        /** 命中后需要连续安静这么久（ms）才允许下一次触发：一次摇晃只算一次 */
+        const val REARM_QUIET_MS = 350L
+
+        /** 幅值低于阈值的这个比例才算「安静」，避免噪声一直不让重新武装 */
+        const val REARM_RATIO = 0.4f
 
         /** 加速度阈值（m/s²）：灵敏度最高时轻晃即可，最低时需明显甩动 */
         const val LIGHT_THRESHOLD = 9f
