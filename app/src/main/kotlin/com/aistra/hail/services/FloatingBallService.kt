@@ -54,11 +54,22 @@ class FloatingBallService : Service() {
     }
 
     private val prefListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        // 大小改变后重建悬浮球，位置从 HailData 读回，不会跳位
-        if (key == HailData.FLOATING_BALL_SIZE) {
-            // 始终先拆后建：隐藏状态下改回大尺寸也要重新出现
-            detachFloatingBall()
-            attachFloatingBall()
+        when (key) {
+            // 大小改变后重建悬浮球，位置从 HailData 读回，不会跳位
+            HailData.FLOATING_BALL_SIZE -> {
+                // 始终先拆后建：隐藏状态下改回大尺寸也要重新出现
+                detachFloatingBall()
+                attachFloatingBall()
+            }
+            // 开关被关掉：不管 stopService 有没有生效，这里先摘窗口再自杀，杜绝残留
+            // （偏好回调可能不在主线程，窗口操作统一切到主线程）
+            HailData.SHAKE_FLOATING_BALL -> if (!HailData.shakeFloatingBall) {
+                mainHandler.post {
+                    detachFloatingBall()
+                    panelHost.release()
+                    stopSelf()
+                }
+            }
         }
     }
 
