@@ -7,7 +7,6 @@ import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.drawable.GradientDrawable
 import android.graphics.Typeface
-import android.os.UserHandle
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.MotionEvent
@@ -26,6 +25,7 @@ import com.aistra.hail.app.HailData
 import com.aistra.hail.app.UnfrozenStore
 import com.aistra.hail.utils.AppIconCache
 import com.aistra.hail.utils.HActions
+import com.aistra.hail.utils.HPackages
 import com.aistra.hail.utils.HUI
 import com.aistra.hail.utils.NameComparator
 import com.google.android.material.card.MaterialCardView
@@ -443,7 +443,7 @@ class ShakeOverlayPanel(
                             AppIconCache.getOrLoadBitmap(
                                 context,
                                 applicationInfo,
-                                UserHandle.getUserId(applicationInfo.uid),
+                                HPackages.myUserId,
                                 ICON_SIZE
                             )
                         }.getOrNull(),
