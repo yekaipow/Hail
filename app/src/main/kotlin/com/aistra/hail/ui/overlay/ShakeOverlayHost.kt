@@ -102,9 +102,9 @@ class ShakeOverlayHost(private val context: Context) {
         onDrag = { dx, dy -> moveBy(dx, dy) }
     ).apply {
         onContentHeightChanged = { heightPx ->
-            // 只有显示中才调整高度
-            if (showing) {
-                val p = params ?: return@onContentHeightChanged
+            // 只有显示中才调整高度（不用 return@label：属性赋值 lambda 的标签在部分 Kotlin 版本不可用）
+            val p = params
+            if (showing && p != null) {
                 runCatching {
                     p.height = heightPx
                     windowManager.updateViewLayout(this@apply, p)
