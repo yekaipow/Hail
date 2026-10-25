@@ -100,6 +100,9 @@ class ShakeOverlayPanel(
         scope.cancel()
     }
 
+    /** 面板每次显示时重新拉取数据并渲染（关掉期间冻结状态可能已变化） */
+    fun refresh() = reload()
+
     /** 点面板外部（宿主加了 FLAG_WATCH_OUTSIDE_TOUCH）即收起面板 */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (ev.actionMasked == MotionEvent.ACTION_OUTSIDE) {
