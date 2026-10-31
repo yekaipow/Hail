@@ -43,6 +43,9 @@ class HomeFragment : MainFragment() {
     /** 底部「冻结」区是否展开；每次进入页面默认折叠 */
     private var frozenExpanded = false
     private var frozenTouchY = 0f
+
+    /** 本次触摸是否可以视为「点击」（没有超过滑动阈值） */
+    private var frozenTapCandidate = false
     private var _binding: FragmentHomeBinding? = null
     val binding get() = _binding!!
     private lateinit var frozenAdapter: FrozenBarAdapter
@@ -176,17 +179,27 @@ class HomeFragment : MainFragment() {
         updateFrozenTitle(binding, count)
     }
 
-    /** 标题栏：上滑展开，下拉折叠 */
+    /** 标题栏：点击切换展开/折叠；上滑展开，下拉折叠 */
     private val frozenTitleTouchListener = View.OnTouchListener { _, event ->
         when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> frozenTouchY = event.rawY
+            MotionEvent.ACTION_DOWN -> {
+                frozenTouchY = event.rawY
+                frozenTapCandidate = true
+            }
             MotionEvent.ACTION_MOVE -> {
                 val dy = event.rawY - frozenTouchY
                 if (abs(dy) > SWIPE_DP * density) {
+                    // 已经算滑动了，抬手不再当作点击
+                    frozenTapCandidate = false
                     frozenTouchY = event.rawY
                     animateFrozenList(expand = dy < 0)
                 }
             }
+            MotionEvent.ACTION_UP -> {
+                if (frozenTapCandidate) animateFrozenList(expand = !frozenExpanded)
+                frozenTapCandidate = false
+            }
+            MotionEvent.ACTION_CANCEL -> frozenTapCandidate = false
         }
         true
     }
