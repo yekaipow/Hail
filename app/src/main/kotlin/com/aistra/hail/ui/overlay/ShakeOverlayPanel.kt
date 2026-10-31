@@ -1,6 +1,7 @@
 package com.aistra.hail.ui.overlay
 
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.ColorMatrix
@@ -16,6 +17,7 @@ import android.view.ViewGroup.LayoutParams
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.view.ContextThemeWrapper
 import com.aistra.hail.R
@@ -68,6 +70,9 @@ class ShakeOverlayPanel(
 ) : MaterialCardView(ContextThemeWrapper(context, R.style.Theme_Hail)) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val gridContainer = LinearLayout(context)
+
+    /** 网格的滚动视口：内容超过屏幕可用高度时在这里滚动，保证底部按钮永远可见 */
+    private val gridScroll = ScrollView(context)
     private val titleView = TextView(context)
     private var apps: List<OverlayApp> = emptyList()
 
@@ -118,11 +123,19 @@ class ShakeOverlayPanel(
         gridContainer.orientation = LinearLayout.VERTICAL
         gridContainer.setPadding(dp(6), 0, dp(6), 0)
         gridContainer.gravity = Gravity.CENTER
+        gridScroll.overScrollMode = View.OVER_SCROLL_NEVER
+        gridScroll.isFillViewport = false
+        if (gridContainer.parent == null) {
+            gridScroll.addView(
+                gridContainer,
+                FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+            )
+        }
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             addView(buildHeader(), LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(HEADER_DP)))
             addView(buildDivider())
-            addView(gridContainer, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(EMPTY_HEIGHT_DP)))
+            addView(gridScroll, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(EMPTY_HEIGHT_DP)))
             addView(buildDivider())
             addView(buildFooter(), LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         }
@@ -290,11 +303,27 @@ class ShakeOverlayPanel(
          * 内容变高后窗口不会跟着长，后面的行全被窗口边界裁掉。
          * 这里所有部件都是固定高度，总高度直接算出来显式固化给窗口。
          */
-        val gridHeight = if (rows.isEmpty()) dp(EMPTY_HEIGHT_DP) else rows.size * dp(CELL_SIZE_DP)
-        (gridContainer.layoutParams as LinearLayout.LayoutParams).height = gridHeight
-        gridContainer.requestLayout()
-        val totalHeight = dp(HEADER_DP) + dp(FOOTER_DP) + gridHeight + 2 // + 两条 1px 分隔线
+        val contentHeight = if (rows.isEmpty()) dp(EMPTY_HEIGHT_DP) else rows.size * dp(CELL_SIZE_DP)
+        // 视口高度封顶到屏幕可用高度：内容再多也只滚动，不会把底部按钮顶出屏幕
+        val viewportHeight = contentHeight.coerceAtMost(maxGridViewportHeight())
+        (gridContainer.layoutParams as FrameLayout.LayoutParams).height = contentHeight
+        (gridScroll.layoutParams as LinearLayout.LayoutParams).height = viewportHeight
+        gridScroll.requestLayout()
+        val totalHeight = dp(HEADER_DP) + dp(FOOTER_DP) + viewportHeight + 2 // + 两条 1px 分隔线
         post { onContentHeightChanged?.invoke(totalHeight) }
+    }
+
+    /** 网格视口上限：屏幕高度减去标题、底部按钮和上下留白 */
+    private fun maxGridViewportHeight(): Int {
+        val screen = resources.displayMetrics.heightPixels
+        val chrome = dp(HEADER_DP) + dp(FOOTER_DP) + dp(2 * SCREEN_MARGIN_DP)
+        return (screen - chrome).coerceAtLeast(dp(EMPTY_HEIGHT_DP))
+    }
+
+    /** 横竖屏切换 / 分辨率变化后重算高度，避免按钮被裁掉 */
+    override fun onConfigurationChanged(newConfig: Configuration?) {
+        super.onConfigurationChanged(newConfig)
+        render()
     }
 
     /**
@@ -412,6 +441,9 @@ class ShakeOverlayPanel(
         /** 标题栏 / 底部按钮栏的固定高度（dp） */
         const val HEADER_DP = 44
         const val FOOTER_DP = 44
+
+        /** 面板上下到屏幕边缘的留白（dp），保证各种分辨率下都能完整显示 */
+        const val SCREEN_MARGIN_DP = 24
 
         /** 列表为空时网格区的固定高度（dp） */
         const val EMPTY_HEIGHT_DP = 80

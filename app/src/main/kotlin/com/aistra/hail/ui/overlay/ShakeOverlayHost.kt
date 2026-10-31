@@ -47,11 +47,17 @@ class ShakeOverlayHost(private val context: Context) {
         val p = params ?: createLayoutParams().also { params = it }
         val panelView = panel ?: createPanel().also { panel = it }
 
+        val lastHeight = p.height
         p.width = minOf((PANEL_WIDTH_DP * density).toInt(), metrics.widthPixels - (32 * density).toInt())
-        p.height = LayoutParams.WRAP_CONTENT
         p.flags = VISIBLE_FLAGS
         p.x = if (lastX != Int.MIN_VALUE) lastX else (metrics.widthPixels - p.width) / 2
         p.y = if (lastY != Int.MIN_VALUE) lastY else (metrics.heightPixels * 0.15f).toInt()
+        // 首帧就按上次高度把窗口夹在屏幕内，避免底部按钮先被顶出屏幕再跳回来
+        if (lastHeight > 0) {
+            p.x = p.x.coerceIn(0, (metrics.widthPixels - p.width).coerceAtLeast(0))
+            p.y = p.y.coerceIn(0, (metrics.heightPixels - lastHeight).coerceAtLeast(0))
+        }
+        p.height = LayoutParams.WRAP_CONTENT
 
         showing = true
         return try {
@@ -102,11 +108,20 @@ class ShakeOverlayHost(private val context: Context) {
         onDrag = { dx, dy -> moveBy(dx, dy) }
     ).apply {
         onContentHeightChanged = { heightPx ->
-            // 只有显示中才调整高度（不用 return@label：属性赋值 lambda 的标签在部分 Kotlin 版本不可用）
+            // 只有显示中才调整窗口
             val p = params
             if (showing && p != null) {
                 runCatching {
+                    val metrics = context.resources.displayMetrics
+                    val density = metrics.density
+                    // 内容高度一变（含旋转/分辨率变化）就重算宽度并把窗口夹进屏幕，
+                    // 保证标题栏和底部三个按钮在任何分辨率下都完整可见
+                    p.width = minOf((PANEL_WIDTH_DP * density).toInt(), metrics.widthPixels - (32 * density).toInt())
                     p.height = heightPx
+                    p.x = p.x.coerceIn(0, (metrics.widthPixels - p.width).coerceAtLeast(0))
+                    p.y = p.y.coerceIn(0, (metrics.heightPixels - heightPx).coerceAtLeast(0))
+                    lastX = p.x
+                    lastY = p.y
                     windowManager.updateViewLayout(this@apply, p)
                 }
             }
