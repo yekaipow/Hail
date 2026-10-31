@@ -30,6 +30,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.lang.reflect.Proxy
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 「划走最近任务即冻结」服务。
@@ -46,6 +47,13 @@ class RecentTaskFreezeService : Service() {
 
     private var taskStackBinder: Binder? = null
 
+    /** 已注册到 system_server 的 listener 对象（反注册要用它） */
+    private var listenerProxy: Any? = null
+    private var listenerRegistered = false
+
+    /** poll 单飞：一轮查询没结束前，后续回调全部丢弃，避免多个 dumpsys 排队 */
+    private val polling = AtomicBoolean(false)
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         createNotificationChannel()
         ServiceCompat.startForeground(
@@ -61,6 +69,7 @@ class RecentTaskFreezeService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        unregisterTaskStackListener()
         scope.cancel()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         super.onDestroy()
@@ -74,25 +83,35 @@ class RecentTaskFreezeService : Service() {
      * 白名单应用跳过；Hail 自身固定视为白名单。
      */
     private fun poll() {
+        // 一轮还没跑完就直接丢弃本次触发（一次任务移除会收到多次回调）
+        if (!polling.compareAndSet(false, true)) return
         scope.launch {
-            val candidates = withContext(Dispatchers.IO) {
-                val whitelisted = HailData.checkedList
-                    .filter { it.whitelisted }
-                    .mapTo(mutableSetOf()) { it.packageName }
-                UnfrozenStore.packages().filter {
-                    it != BuildConfig.APPLICATION_ID &&
-                        it !in whitelisted &&
-                        !AppManager.isAppFrozen(it)
-                }
+            try {
+                runPoll()
+            } finally {
+                polling.set(false)
             }
-            // 没有可冻结对象时跳过查询，省电
-            if (candidates.isEmpty()) return@launch
-            val running = withContext(Dispatchers.IO) { queryRunningPackages() } ?: return@launch
-            val targets = candidates.filter { it !in running }
-            if (targets.isEmpty()) return@launch
-            withContext(Dispatchers.IO) {
-                targets.forEach { AppManager.setAppFrozen(it, true) }
+        }
+    }
+
+    private suspend fun runPoll() {
+        val candidates = withContext(Dispatchers.IO) {
+            val whitelisted = HailData.checkedList
+                .filter { it.whitelisted }
+                .mapTo(mutableSetOf()) { it.packageName }
+            UnfrozenStore.packages().filter {
+                it != BuildConfig.APPLICATION_ID &&
+                    it !in whitelisted &&
+                    !AppManager.isAppFrozen(it)
             }
+        }
+        // 没有可冻结对象时跳过查询，省电
+        if (candidates.isEmpty()) return
+        val running = withContext(Dispatchers.IO) { queryRunningPackages() } ?: return
+        val targets = candidates.filter { it !in running }
+        if (targets.isEmpty()) return
+        withContext(Dispatchers.IO) {
+            targets.forEach { AppManager.setAppFrozen(it, true) }
         }
     }
 
@@ -106,6 +125,8 @@ class RecentTaskFreezeService : Service() {
      */
     private fun registerTaskStackListener(): Boolean {
         if (!HailData.workingMode.startsWith(HailData.SHIZUKU)) return false
+        // 幂等：MainActivity 每次进前台都会 startService，不能每次都往系统里加一个监听
+        if (listenerRegistered && listenerProxy != null) return true
         return runCatching {
             val taskManager = HShizuku.getActivityTaskManager()
             val listenerClass = Class.forName("android.app.ITaskStackListener")
@@ -134,11 +155,29 @@ class RecentTaskFreezeService : Service() {
                 taskManager.javaClass, taskManager, "registerTaskStackListener", proxy
             )
             taskStackBinder = binder
+            listenerProxy = proxy
+            listenerRegistered = true
             true
         }.getOrElse {
             HLog.e(it)
+            listenerRegistered = false
+            listenerProxy = null
             false
         }
+    }
+
+    /** 服务销毁时摘掉监听，避免 system_server 里的监听列表越堆越多 */
+    private fun unregisterTaskStackListener() {
+        val proxy = listenerProxy ?: return
+        listenerRegistered = false
+        listenerProxy = null
+        taskStackBinder = null
+        runCatching {
+            val taskManager = HShizuku.getActivityTaskManager()
+            HiddenApiBypass.invoke(
+                taskManager.javaClass, taskManager, "unregisterTaskStackListener", proxy
+            )
+        }.onFailure { HLog.e(it) }
     }
 
     /** 读取最近任务列表里的包名；无特权或执行失败返回 null */
