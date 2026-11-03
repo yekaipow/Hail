@@ -103,8 +103,9 @@ class AboutFragment : MainFragment() {
     /** 许可证：每行「名称: 链接」，名称可点开对应链接 */
     private fun showLicenseDialog() {
         val context = requireContext()
+        // colorPrimary 定义在 appcompat 里，Material 的 R.attr 没有
         val linkColor = MaterialColors.getColor(
-            requireView(), com.google.android.material.R.attr.colorPrimary
+            requireView(), androidx.appcompat.R.attr.colorPrimary
         )
         val text = SpannableStringBuilder()
         runCatching {
