@@ -60,7 +60,7 @@
         <item name="colorSurfaceContainerHighest">@color/md_theme_surfaceContainerHighest</item>
     </style>
 
-    <style name="Theme.Hail.Translucent">
+    <style name="Theme.Hail.Translucent" parent="Theme.Hail">
         <item name="android:colorBackgroundCacheHint">@null</item>
         <item name="android:windowAnimationStyle">@null</item>
         <item name="android:windowBackground">@android:color/transparent</item>

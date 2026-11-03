@@ -5,21 +5,11 @@ import android.content.Intent
 import android.content.pm.PackageManager.NameNotFoundException
 import android.net.Uri
 import android.os.Bundle
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
+import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.dimensionResource
-import androidx.compose.ui.res.stringResource
 import com.aistra.hail.HailApp.Companion.app
 import com.aistra.hail.R
 import com.aistra.hail.app.AppInfo
@@ -27,10 +17,11 @@ import com.aistra.hail.app.AppManager
 import com.aistra.hail.app.HailApi
 import com.aistra.hail.app.HailData
 import com.aistra.hail.app.UnfrozenStore
-import com.aistra.hail.ui.theme.AppTheme
+import com.aistra.hail.databinding.ItemAboutLinkBinding
 import com.aistra.hail.utils.*
 import com.aistra.hail.work.HWork.setAutoFreeze
-import com.aistra.hail.ui.icons.HailIcons
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 class ApiActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,7 +34,7 @@ class ApiActivity : ComponentActivity() {
     private fun handleAction(action: String?): Boolean {
         when (action) {
             Intent.ACTION_SHOW_APP_INFO -> {
-                setContent { AppTheme { RedirectBottomSheet(requirePackage) } }
+                showRedirectSheet(requirePackage)
                 return false
             }
 
@@ -105,63 +96,61 @@ class ApiActivity : ComponentActivity() {
         )
     }
 
-    private fun setErrorDialog(t: Throwable) = setContent { AppTheme { ErrorDialog(t) } }
-
-    @OptIn(ExperimentalMaterial3Api::class)
-    @Composable
-    private fun RedirectBottomSheet(pkg: String) = ModalBottomSheet(
-        onDismissRequest = ::finish, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ) {
-        Column {
-            Text(
-                text = HPackages.getApplicationInfoOrNull(pkg)?.loadLabel(packageManager)?.toString() ?: pkg,
-                modifier = Modifier.padding(
-                    horizontal = dimensionResource(R.dimen.padding_medium),
-                    vertical = dimensionResource(R.dimen.padding_small)
-                ),
-                style = MaterialTheme.typography.headlineSmall
-            )
-            ClickableItem(
-                icon = HailIcons.Launch, title = R.string.action_launch
-            ) { launchApp(pkg) }
-            ClickableItem(
-                icon = HailIcons.AcUnit, title = R.string.action_freeze
-            ) {
-                if (!HailData.isChecked(pkg)) HailData.addCheckedApp(pkg)
-                setAppFrozen(pkg, true)
-            }
-            ClickableItem(
-                icon = HailIcons.BrightnessLow, title = R.string.action_unfreeze
-            ) { setAppFrozen(pkg, false) }
-        }
+    private fun setErrorDialog(t: Throwable) {
+        MaterialAlertDialogBuilder(this)
+            .setMessage(t.message ?: t.stackTraceToString())
+            .setPositiveButton(android.R.string.ok) { _, _ -> finish() }
+            .setOnCancelListener { finish() }
+            .show()
     }
 
-    @Composable
-    private fun ClickableItem(icon: ImageVector, @StringRes title: Int, onClick: () -> Unit) = Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = {
+    /** 点图标后的操作面板：启动 / 冻结 / 解冻 */
+    private fun showRedirectSheet(pkg: String) {
+        val dialog = BottomSheetDialog(this)
+        val container = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val paddingH = resources.getDimensionPixelSize(R.dimen.padding_medium)
+        val paddingV = resources.getDimensionPixelSize(R.dimen.padding_small)
+        val label = HPackages.getApplicationInfoOrNull(pkg)?.loadLabel(packageManager)?.toString() ?: pkg
+
+        container.addView(TextView(this).apply {
+            text = label
+            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_HeadlineSmall)
+            setPadding(paddingH, paddingV, paddingH, paddingV)
+        })
+        addSheetItem(container, dialog, R.drawable.ic_about_launch, R.string.action_launch) {
+            launchApp(pkg)
+        }
+        addSheetItem(container, dialog, R.drawable.ic_about_ac_unit, R.string.action_freeze) {
+            if (!HailData.isChecked(pkg)) HailData.addCheckedApp(pkg)
+            setAppFrozen(pkg, true)
+        }
+        addSheetItem(container, dialog, R.drawable.ic_about_brightness_low, R.string.action_unfreeze) {
+            setAppFrozen(pkg, false)
+        }
+
+        dialog.setContentView(container)
+        dialog.show()
+    }
+
+    private fun addSheetItem(
+        container: LinearLayout,
+        dialog: BottomSheetDialog,
+        @DrawableRes icon: Int,
+        @StringRes title: Int,
+        onClick: () -> Unit
+    ) {
+        val item = ItemAboutLinkBinding.inflate(layoutInflater, container, false)
+        item.icon.setImageResource(icon)
+        item.title.setText(title)
+        item.root.setOnClickListener {
             runCatching {
                 onClick()
+                dialog.dismiss()
                 finish()
             }.onFailure(::setErrorDialog)
-        }), verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.padding(dimensionResource(R.dimen.padding_medium))
-        )
-        Text(text = stringResource(title), style = MaterialTheme.typography.bodyLarge)
+        }
+        container.addView(item.root)
     }
-
-    @Composable
-    private fun ErrorDialog(t: Throwable) = AlertDialog(
-        text = { Text(text = t.message ?: t.stackTraceToString()) },
-        onDismissRequest = ::finish,
-        confirmButton = {
-            TextButton(onClick = ::finish) {
-                Text(text = stringResource(android.R.string.ok))
-            }
-        })
 
     private val requirePackage: String
         get() = intent.run {

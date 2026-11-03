@@ -5,23 +5,10 @@ import android.provider.Settings
 import android.text.InputType
 import android.view.*
 import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
 import androidx.appcompat.widget.SearchView
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TriStateCheckbox
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.state.ToggleableState
-import androidx.compose.ui.unit.dp
 import androidx.core.view.MenuHost
 import androidx.core.view.MenuProvider
 import androidx.core.view.isVisible
@@ -48,6 +35,7 @@ import com.aistra.hail.ui.theme.AppTheme
 import com.aistra.hail.utils.*
 import com.aistra.hail.work.HWork
 import com.google.android.material.color.MaterialColors
+import com.google.android.material.checkbox.MaterialCheckBox
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.tabs.TabLayout
@@ -357,69 +345,91 @@ class PagerFragment : MainFragment(), PagerAdapter.OnItemClickListener, PagerAda
         }.show()
     }
 
+    /** 标签三态：全选 / 全不选 / 部分选中 */
+    private enum class TriState { ON, OFF, INDETERMINATE }
+
     private fun triStateTagDialog() {
         val initialStates = Array(HailData.tags.size) { index ->
             val tagId = HailData.tags[index].second
             when (selectedList.count { tagId in it.tagIdList }) {
-                selectedList.size -> ToggleableState.On
-                0 -> ToggleableState.Off
-                else -> ToggleableState.Indeterminate
+                selectedList.size -> TriState.ON
+                0 -> TriState.OFF
+                else -> TriState.INDETERMINATE
             }
         }
-        val states = mutableStateListOf(*initialStates)
-        MaterialAlertDialogBuilder(activity).setTitle(R.string.action_tag_set).setView(ComposeView(activity).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-            setContent { AppTheme { TriStateTagList(initialStates, states) } }
-        }).setPositiveButton(android.R.string.ok) { _, _ ->
-            selectedList.forEach {
-                states.forEachIndexed { index, state ->
-                    val tagId = HailData.tags[index].second
-                    when (state) {
-                        ToggleableState.On -> {
-                            if (tagId !in it.tagIdList) it.tagIdList.add(tagId)
-                        }
+        val states = initialStates.toMutableList()
 
-                        ToggleableState.Off -> it.tagIdList.remove(tagId)
-                        ToggleableState.Indeterminate -> {}
-                    }
-                }
-                if (it.tagIdList.isEmpty()) removeCheckedApp(it.packageName, false)
+        val padding = resources.getDimensionPixelSize(R.dimen.padding_medium)
+        val container = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, padding, 0, 0)
+        }
+        val scroll = ScrollView(activity).apply {
+            addView(
+                container,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
+        HailData.tags.forEachIndexed { index, tag ->
+            val row = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(padding, 0, padding, 0)
             }
-            HailData.saveApps()
-            deselect()
-        }.setNeutralButton(R.string.action_tag_add) { _, _ ->
-            showTagDialog(selectedList)
-        }.setNegativeButton(android.R.string.cancel, null).show()
+            val checkBox = MaterialCheckBox(activity).apply {
+                isClickable = false
+                isFocusable = false
+                checkedState = states[index].toCheckedState()
+            }
+            val text = TextView(activity).apply {
+                text = tag.first
+                setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyLarge)
+                setPadding(padding, padding / 2, 0, padding / 2)
+            }
+            row.addView(checkBox)
+            row.addView(text)
+            row.setOnClickListener {
+                states[index] = if (initialStates[index] == TriState.INDETERMINATE) {
+                    when (states[index]) {
+                        TriState.ON -> TriState.OFF
+                        TriState.OFF -> TriState.INDETERMINATE
+                        TriState.INDETERMINATE -> TriState.ON
+                    }
+                } else {
+                    if (states[index] == TriState.ON) TriState.OFF else TriState.ON
+                }
+                checkBox.checkedState = states[index].toCheckedState()
+            }
+            container.addView(row)
+        }
+
+        MaterialAlertDialogBuilder(activity).setTitle(R.string.action_tag_set).setView(scroll)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                selectedList.forEach {
+                    states.forEachIndexed { index, state ->
+                        val tagId = HailData.tags[index].second
+                        when (state) {
+                            TriState.ON -> if (tagId !in it.tagIdList) it.tagIdList.add(tagId)
+                            TriState.OFF -> it.tagIdList.remove(tagId)
+                            TriState.INDETERMINATE -> {}
+                        }
+                    }
+                    if (it.tagIdList.isEmpty()) removeCheckedApp(it.packageName, false)
+                }
+                HailData.saveApps()
+                deselect()
+            }.setNeutralButton(R.string.action_tag_add) { _, _ ->
+                showTagDialog(selectedList)
+            }.setNegativeButton(android.R.string.cancel, null).show()
     }
 
-    @Composable
-    private fun TriStateTagList(initialStates: Array<ToggleableState>, states: MutableList<ToggleableState>) = Column(
-        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
-    ) {
-        Spacer(modifier = Modifier.height(16.dp))
-        HailData.tags.forEachIndexed { index, tag ->
-            Row(modifier = Modifier.fillMaxWidth().clickable {
-                states[index] = if (initialStates[index] == ToggleableState.Indeterminate) when (states[index]) {
-                    ToggleableState.On -> ToggleableState.Off
-                    ToggleableState.Off -> ToggleableState.Indeterminate
-                    ToggleableState.Indeterminate -> ToggleableState.On
-                }
-                else if (states[index] == ToggleableState.On) ToggleableState.Off
-                else ToggleableState.On
-            }.padding(horizontal = 24.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                TriStateCheckbox(
-                    state = states[index],
-                    onClick = null,
-                    colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.secondary)
-                )
-                Spacer(modifier = Modifier.width(24.dp))
-                Text(
-                    text = tag.first,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyLarge
-                )
-            }
-        }
+    private fun TriState.toCheckedState(): Int = when (this) {
+        TriState.ON -> MaterialCheckBox.STATE_CHECKED
+        TriState.OFF -> MaterialCheckBox.STATE_UNCHECKED
+        TriState.INDETERMINATE -> MaterialCheckBox.STATE_INDETERMINATE
     }
 
     private fun launchApp(packageName: String) {
