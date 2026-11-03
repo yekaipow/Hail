@@ -1,12 +1,9 @@
 package com.aistra.hail.utils
 
 import com.aistra.hail.app.HailData
-import org.apache.commons.text.similarity.LevenshteinDistance
 
 /** 使用莱文斯坦距离 (Levenshtein distance) 实现模糊搜索 */
 object FuzzySearch {
-    private val levenshteinDistance = LevenshteinDistance.getDefaultInstance()
-
     /**
      * 两个字符串差异小于原始字符串长度 且 原始字符串依次包含输入字符串的每个字符 则显示在搜索结果中
      * @param raw 需要匹配的原始字符串
@@ -19,8 +16,33 @@ object FuzzySearch {
         if (!HailData.fuzzySearch) return false
         val rawUpp = raw.uppercase()
         val queryUpp = query.uppercase()
-        val diff = levenshteinDistance.apply(rawUpp, queryUpp)
+        val diff = levenshtein(rawUpp, queryUpp)
         return diff < rawUpp.length && containsInOrder(rawUpp, queryUpp)
+    }
+
+    /** 莱文斯坦距离（编辑距离）：把 a 变成 b 需要的最少增删改次数 */
+    private fun levenshtein(a: String, b: String): Int {
+        if (a == b) return 0
+        if (a.isEmpty()) return b.length
+        if (b.isEmpty()) return a.length
+        var previous = IntArray(b.length + 1) { it }
+        var current = IntArray(b.length + 1)
+        for (i in 1..a.length) {
+            current[0] = i
+            val ca = a[i - 1]
+            for (j in 1..b.length) {
+                val cost = if (ca == b[j - 1]) 0 else 1
+                current[j] = minOf(
+                    current[j - 1] + 1,
+                    previous[j] + 1,
+                    previous[j - 1] + cost
+                )
+            }
+            val tmp = previous
+            previous = current
+            current = tmp
+        }
+        return previous[b.length]
     }
 
     /** 判断字符串A是否依次包含字符串B的每个字符 */

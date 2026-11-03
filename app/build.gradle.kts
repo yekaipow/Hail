@@ -63,8 +63,23 @@ android {
     }
     androidResources {
         generateLocaleConfig = true
+        // 只保留简体中文和英文资源：仓库里有 40 个 values-* 语言目录，其余语言回退英文
+        localeFilters += listOf("zh-rCN", "en")
         // Do not compress the dex files, so the apk can be imported as a privileged app
         noCompress += "dex"
+    }
+    packaging {
+        resources {
+            // 排除依赖库里的冗余元数据；注意 META-INF/xposed/** 是 xposed 模块清单，必须保留
+            excludes += listOf(
+                "META-INF/*.kotlin_module",
+                "META-INF/*.version",
+                "META-INF/AL2.0",
+                "META-INF/LGPL2.1",
+                "DebugProbesKt.bin",
+                "kotlin-tooling-metadata.json"
+            )
+        }
     }
     buildFeatures {
         viewBinding = true
@@ -97,7 +112,6 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.material3)
-    implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.ui.tooling.preview)
     debugImplementation(libs.androidx.ui.tooling)
     implementation(libs.androidx.appcompat)
@@ -110,7 +124,6 @@ dependencies {
     implementation(libs.androidx.preference.ktx)
     implementation(libs.androidx.swiperefreshlayout)
     implementation(libs.androidx.work.runtime.ktx)
-    implementation(libs.pinyin4j)
     implementation(libs.material)
     implementation(libs.insetter)
     implementation(libs.shizuku.api)
@@ -118,7 +131,6 @@ dependencies {
     implementation(libs.dhizuku.api)
     implementation(libs.appiconloader)
     implementation(libs.compose.preference)
-    implementation(libs.commons.text)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.hiddenapibypass)
     compileOnly(libs.libxposed.api)

@@ -1,6 +1,5 @@
 package com.aistra.hail.utils
 
-import net.sourceforge.pinyin4j.PinyinHelper
 import java.util.Locale
 
 /** 中文拼音搜索类 */
@@ -61,7 +60,7 @@ object PinyinSearch {
         capList: CharArray, currentIndex: Int, target: String, result: ArrayList<String>
     ) {
         if (currentIndex == target.length - 1) {
-            val arrayOrNull = PinyinHelper.toHanyuPinyinStringArray(target[currentIndex])
+            val arrayOrNull = HPinyin.pinyinArray(target[currentIndex])
             if (arrayOrNull == null) {
                 capList[currentIndex] = target[currentIndex]
                 result.add(String(capList))
@@ -74,7 +73,7 @@ object PinyinSearch {
             }
 
         } else {
-            val arrayOrNull = PinyinHelper.toHanyuPinyinStringArray(target[currentIndex])
+            val arrayOrNull = HPinyin.pinyinArray(target[currentIndex])
             if (arrayOrNull == null) {
                 val arr = capList.copyOf()
                 arr[currentIndex] = target[currentIndex]
@@ -97,12 +96,12 @@ object PinyinSearch {
         fullList: Array<String>, currentIndex: Int, target: String, result: ArrayList<String>
     ) {
         if (currentIndex == target.length - 1) {
-            val arrayOrNull = PinyinHelper.toHanyuPinyinStringArray(target[currentIndex])
+            val arrayOrNull = HPinyin.pinyinArray(target[currentIndex])
             if (arrayOrNull == null) {
                 fullList[currentIndex] = target[currentIndex].toString()
                 result.add(fullList.joinToString(""))
             } else {
-                val arrayDis = arrayOrNull.map { e -> e.substring(0, e.length - 1) }.distinct()
+                val arrayDis = arrayOrNull.distinct()
                 for (item in arrayDis) {
                     fullList[currentIndex] = item
                     result.add(fullList.joinToString(""))
@@ -110,14 +109,14 @@ object PinyinSearch {
             }
 
         } else {
-            val arrayOrNull = PinyinHelper.toHanyuPinyinStringArray(target[currentIndex])
+            val arrayOrNull = HPinyin.pinyinArray(target[currentIndex])
             if (arrayOrNull == null) {
                 val arr = fullList.copyOf()
                 arr[currentIndex] = target[currentIndex].toString()
                 val newIndex = currentIndex + 1
                 getNameCapListPinyinAll(arr, newIndex, target, result)
             } else {
-                val arrayDis = arrayOrNull.map { e -> e.substring(0, e.length - 1) }.distinct()
+                val arrayDis = arrayOrNull.distinct()
                 for (item in arrayDis) {
                     val arr = fullList.copyOf()
                     arr[currentIndex] = item

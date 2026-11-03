@@ -13,10 +13,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Launch
-import androidx.compose.material.icons.rounded.AcUnit
-import androidx.compose.material.icons.rounded.BrightnessLow
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -34,6 +30,7 @@ import com.aistra.hail.app.UnfrozenStore
 import com.aistra.hail.ui.theme.AppTheme
 import com.aistra.hail.utils.*
 import com.aistra.hail.work.HWork.setAutoFreeze
+import com.aistra.hail.ui.icons.HailIcons
 
 class ApiActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -125,16 +122,16 @@ class ApiActivity : ComponentActivity() {
                 style = MaterialTheme.typography.headlineSmall
             )
             ClickableItem(
-                icon = Icons.AutoMirrored.Outlined.Launch, title = R.string.action_launch
+                icon = HailIcons.Launch, title = R.string.action_launch
             ) { launchApp(pkg) }
             ClickableItem(
-                icon = Icons.Rounded.AcUnit, title = R.string.action_freeze
+                icon = HailIcons.AcUnit, title = R.string.action_freeze
             ) {
                 if (!HailData.isChecked(pkg)) HailData.addCheckedApp(pkg)
                 setAppFrozen(pkg, true)
             }
             ClickableItem(
-                icon = Icons.Rounded.BrightnessLow, title = R.string.action_unfreeze
+                icon = HailIcons.BrightnessLow, title = R.string.action_unfreeze
             ) { setAppFrozen(pkg, false) }
         }
     }

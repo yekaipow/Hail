@@ -1,7 +1,5 @@
 package com.aistra.hail.utils
 
-import net.sourceforge.pinyin4j.PinyinHelper
-
 object NineKeySearch {
     fun search(query: String?, vararg strings: String?): Boolean =
         query.isNullOrEmpty() || strings.any {
@@ -17,9 +15,7 @@ object NineKeySearch {
                 in '0'..'9' -> append(it)
                 in 'a'..'z' -> append(it)
                 in 'A'..'Z' -> append(it)
-                else -> PinyinHelper.toHanyuPinyinStringArray(it)?.let { strings ->
-                    for (str in strings) append(str)
-                }
+                else -> HPinyin.pinyinOf(it)?.let { pinyin -> append(pinyin) }
             }
         }
     }

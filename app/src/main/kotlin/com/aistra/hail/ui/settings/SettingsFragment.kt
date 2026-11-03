@@ -14,10 +14,6 @@ import androidx.appcompat.content.res.AppCompatResources
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ManageSearch
-import androidx.compose.material.icons.automirrored.outlined.Shortcut
-import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -58,6 +54,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.zhanghai.compose.preference.*
 import rikka.shizuku.Shizuku
+import com.aistra.hail.ui.icons.HailIcons
 
 class SettingsFragment : MainFragment(), MenuProvider {
     private val requestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
@@ -92,7 +89,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 values = HailData.WORKING_MODE_VALUES,
                 entriesId = R.array.working_mode_entries,
                 titleId = R.string.working_mode,
-                icon = Icons.Outlined.Adb,
+                icon = HailIcons.Adb,
                 type = ListPreferenceType.ALERT_DIALOG
             )
             switchPreference(
@@ -103,7 +100,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                     true
                 },
                 titleId = R.string.action_biometric,
-                icon = Icons.Outlined.Fingerprint
+                icon = HailIcons.Fingerprint
             )
             horizontalDivider()
             preferenceCategory(key = "customize", title = { Text(text = stringResource(R.string.title_customize)) })
@@ -117,7 +114,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 values = HailData.APP_THEME_VALUES,
                 entriesId = R.array.app_theme_entries,
                 titleId = R.string.app_theme,
-                icon = Icons.Outlined.DarkMode
+                icon = HailIcons.DarkMode
             )
             listPreference(
                 key = HailData.ICON_PACK,
@@ -134,7 +131,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                     }.map { it.activityInfo.packageName })
                 },
                 titleId = R.string.icon_pack,
-                icon = Icons.Outlined.Palette,
+                icon = HailIcons.Palette,
                 summary = { iconPackName(it) },
                 valueToText = ::iconPackName
             )
@@ -142,7 +139,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 key = HailData.GRAYSCALE_ICON,
                 defaultValue = true,
                 titleId = R.string.grayscale_icon,
-                icon = Icons.Outlined.FilterBAndW
+                icon = HailIcons.FilterBAndW
             )
             item(key = HailData.HIDE_FROM_RECENTS, contentType = "SwitchPreference") {
                 SwitchPreference(
@@ -150,20 +147,20 @@ class SettingsFragment : MainFragment(), MenuProvider {
                     onValueChange = { hideFromRecents.value = it },
                     title = { Text(text = stringResource(R.string.hide_from_recents)) },
                     summary = { Text(text = stringResource(R.string.hide_from_recents_desc)) },
-                    icon = { Icon(imageVector = Icons.Outlined.VisibilityOff, contentDescription = null) }
+                    icon = { Icon(imageVector = HailIcons.VisibilityOff, contentDescription = null) }
                 )
             }
             switchPreference(
                 key = HailData.COMPACT_ICON,
                 defaultValue = false,
                 titleId = R.string.compact_icon,
-                icon = Icons.Outlined.Apps
+                icon = HailIcons.Apps
             )
             switchPreference(
                 key = HailData.SYNTHESIZE_ADAPTIVE_ICONS,
                 defaultValue = false,
                 titleId = R.string.synthesize_adaptive_icons,
-                icon = Icons.Outlined.Layers
+                icon = HailIcons.Layers
             )
             sliderPreference(
                 key = HailData.HOME_FONT_SIZE,
@@ -171,20 +168,20 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 title = { Text(text = stringResource(R.string.home_font_size)) },
                 valueRange = 11f..16f,
                 valueSteps = 4,
-                icon = { Icon(imageVector = Icons.Outlined.TextFields, contentDescription = null) },
+                icon = { Icon(imageVector = HailIcons.TextFields, contentDescription = null) },
                 valueText = { Text(text = "%.0f".format(it)) },
             )
             switchPreference(
                 key = HailData.FUZZY_SEARCH,
                 defaultValue = false,
                 titleId = R.string.fuzzy_search,
-                icon = Icons.AutoMirrored.Outlined.ManageSearch
+                icon = HailIcons.ManageSearch
             )
             switchPreference(
                 key = HailData.NINE_KEY_SEARCH,
                 defaultValue = false,
                 titleId = R.string.nine_key,
-                icon = Icons.Outlined.Dialpad
+                icon = HailIcons.Dialpad
             )
             listPreference(
                 key = HailData.TILE_ACTION,
@@ -192,7 +189,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 values = HailData.TILE_ACTION_VALUES,
                 entriesId = R.array.tile_action_entries,
                 titleId = R.string.tile_action,
-                icon = Icons.Outlined.DashboardCustomize
+                icon = HailIcons.DashboardCustomize
             )
             horizontalDivider()
             preferenceCategory(key = "auto_freeze", title = { Text(text = stringResource(R.string.auto_freeze)) })
@@ -204,7 +201,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                     },
                     title = { Text(text = stringResource(R.string.recent_task_freeze)) },
                     summary = { Text(text = stringResource(R.string.recent_task_freeze_desc)) },
-                    icon = { Icon(imageVector = Icons.Outlined.DeleteSweep, contentDescription = null) }
+                    icon = { Icon(imageVector = HailIcons.DeleteSweep, contentDescription = null) }
                 )
             }
             switchPreference(
@@ -214,7 +211,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                     true
                 },
                 titleId = R.string.auto_freeze_after_lock,
-                icon = Icons.Outlined.ScreenLockPortrait
+                icon = HailIcons.ScreenLockPortrait
             )
             sliderPreference(
                 key = HailData.AUTO_FREEZE_DELAY,
@@ -223,7 +220,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 valueRange = 0f..30f,
                 valueSteps = 29,
                 enabled = { autoFreezeAfterLock.value },
-                icon = { Icon(imageVector = Icons.Outlined.LockClock, contentDescription = null) },
+                icon = { Icon(imageVector = HailIcons.LockClock, contentDescription = null) },
                 valueText = { Text(text = "%.0f".format(it)) },
             )
             switchPreference(
@@ -231,7 +228,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 defaultValue = false,
                 titleId = R.string.skip_while_charging,
                 enabled = autoFreezeAfterLock.value,
-                icon = Icons.Outlined.BatteryChargingFull
+                icon = HailIcons.BatteryChargingFull
             )
             switchPreference(
                 key = HailData.SKIP_FOREGROUND_APP,
@@ -244,7 +241,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 },
                 titleId = R.string.skip_foreground_app,
                 enabled = autoFreezeAfterLock.value,
-                icon = Icons.Outlined.Android
+                icon = HailIcons.Android
             )
             switchPreference(
                 key = HailData.SKIP_NOTIFYING_APP,
@@ -260,7 +257,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 },
                 titleId = R.string.skip_notifying_app,
                 enabled = autoFreezeAfterLock.value,
-                icon = Icons.Outlined.NotificationsActive
+                icon = HailIcons.NotificationsActive
             )
             horizontalDivider()
             preferenceCategory(key = "shake", title = { Text(text = stringResource(R.string.shake_overlay)) })
@@ -270,7 +267,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                     onValueChange = { if (onShakeOverlayChange(it)) shakeOverlay.value = it },
                     title = { Text(text = stringResource(R.string.shake_overlay_switch)) },
                     summary = { Text(text = stringResource(R.string.shake_overlay_desc)) },
-                    icon = { Icon(imageVector = Icons.Outlined.Vibration, contentDescription = null) }
+                    icon = { Icon(imageVector = HailIcons.Vibration, contentDescription = null) }
                 )
             }
             sliderPreference(
@@ -280,7 +277,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 valueRange = 0f..1f,
                 valueSteps = 3,
                 enabled = { shakeOverlay.value },
-                icon = { Icon(imageVector = Icons.Outlined.Speed, contentDescription = null) },
+                icon = { Icon(imageVector = HailIcons.Speed, contentDescription = null) },
                 valueText = { Text(text = "${(it * 100).toInt()}%") }
             )
             listPreference(
@@ -291,7 +288,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 values = mutableListOf("20", "60", "100", "200", "500"),
                 entriesId = R.array.shake_sample_rate_entries,
                 titleId = R.string.shake_sample_rate,
-                icon = Icons.Outlined.Timeline,
+                icon = HailIcons.Timeline,
                 type = ListPreferenceType.ALERT_DIALOG
             )
             item(key = HailData.SHAKE_FLOATING_BALL, contentType = "SwitchPreference") {
@@ -302,7 +299,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                     },
                     title = { Text(text = stringResource(R.string.shake_floating_ball)) },
                     summary = { Text(text = stringResource(R.string.shake_floating_ball_desc)) },
-                    icon = { Icon(imageVector = Icons.Outlined.Adjust, contentDescription = null) }
+                    icon = { Icon(imageVector = HailIcons.Adjust, contentDescription = null) }
                 )
             }
             sliderPreference(
@@ -312,7 +309,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 valueRange = 1f..50f,
                 valueSteps = 49,
                 enabled = { shakeFloatingBall.value },
-                icon = { Icon(imageVector = Icons.Outlined.PhotoSizeSelectSmall, contentDescription = null) },
+                icon = { Icon(imageVector = HailIcons.PhotoSizeSelectSmall, contentDescription = null) },
                 valueText = { Text(text = "${it.toInt()}dp") }
             )
             listPreference(
@@ -322,7 +319,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 values = mutableListOf(HailData.ACTION_FREEZE_ALL, HailData.ACTION_LOCK),
                 entriesId = R.array.shake_floating_ball_action_entries,
                 titleId = R.string.shake_floating_ball_long_press,
-                icon = Icons.Outlined.TouchApp,
+                icon = HailIcons.TouchApp,
                 type = ListPreferenceType.ALERT_DIALOG
             )
             horizontalDivider()
@@ -330,7 +327,7 @@ class SettingsFragment : MainFragment(), MenuProvider {
             preference(
                 key = "add_pin_shortcut",
                 title = { Text(text = stringResource(R.string.action_add_pin_shortcut)) },
-                icon = { Icon(imageVector = Icons.AutoMirrored.Outlined.Shortcut, contentDescription = null) },
+                icon = { Icon(imageVector = HailIcons.Shortcut, contentDescription = null) },
                 onClick = ::addPinShortcut
             )
             listPreference(
@@ -344,12 +341,12 @@ class SettingsFragment : MainFragment(), MenuProvider {
                 values = HailData.DYNAMIC_SHORTCUT_ACTIONS,
                 entriesId = R.array.dynamic_shortcut_entries,
                 titleId = R.string.dynamic_shortcut_action,
-                icon = Icons.Outlined.AppShortcut
+                icon = HailIcons.AppShortcut
             )
             preference(
                 key = "clear_dynamic_shortcuts",
                 title = { Text(text = stringResource(R.string.action_clear_dynamic_shortcuts)) },
-                icon = { Icon(imageVector = Icons.Outlined.CleaningServices, contentDescription = null) },
+                icon = { Icon(imageVector = HailIcons.CleaningServices, contentDescription = null) },
                 onClick = ::resetDynamicShortcuts
             )
         }
