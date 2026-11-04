@@ -1,7 +1,9 @@
 <resources>
     <dimen name="header_height">176dp</dimen>
     <dimen name="fab_margin">16dp</dimen>
-    <dimen name="app_icon_size">64dp</dimen>
+    <!-- 图标解码尺寸与控件尺寸同源：降 64->56dp 后单张图标像素量降约 23%，
+         缓存和绘制内存同比例下降；再降到 48dp 约降 44%，看实际观感取舍 -->
+    <dimen name="app_icon_size">56dp</dimen>
     <dimen name="padding_extra_small">4dp</dimen>
     <dimen name="padding_small">8dp</dimen>
     <dimen name="padding_medium">16dp</dimen>

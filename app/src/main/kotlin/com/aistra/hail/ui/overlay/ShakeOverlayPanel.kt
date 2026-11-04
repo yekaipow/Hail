@@ -451,8 +451,7 @@ class ShakeOverlayPanel(
         /** 面板最多展示的应用数量 */
         const val MAX_ITEMS = 20
 
-        /** 图标解码尺寸上限，过大只会浪费内存 */
-        const val ICON_SIZE = 72
+        /** 解码尺寸跟随控件尺寸（[ICON_SIZE_DP]）：写死 72px 在 3x 屏只有 24dp，会被拉伸糊掉 */
 
         /**
          * 读取首页「冻结」区的同一份数据：UnfrozenStore 里待处理的应用。
@@ -460,6 +459,7 @@ class ShakeOverlayPanel(
          */
         fun loadApps(context: Context): List<OverlayApp> {
             val packageManager = context.packageManager
+            val iconSize = (ICON_SIZE_DP * context.resources.displayMetrics.density).toInt()
             return UnfrozenStore.packages()
                 .map { AppInfo(it) }
                 .filter {
@@ -479,7 +479,7 @@ class ShakeOverlayPanel(
                                 context,
                                 applicationInfo,
                                 HPackages.myUserId,
-                                ICON_SIZE
+                                iconSize
                             )
                         }.getOrNull(),
                         frozen = AppManager.isAppFrozen(info.packageName),
