@@ -247,11 +247,17 @@ class FloatingBallService : Service() {
         PixelFormat.TRANSLUCENT
     ).apply {
         gravity = Gravity.TOP or Gravity.START
-        x = if (offscreen) metrics.widthPixels + OFFSCREEN_OFFSET_PX
-        else if (HailData.shakeFloatingBallX != Int.MIN_VALUE) HailData.shakeFloatingBallX
-        else metrics.widthPixels - size - (BALL_MARGIN_DP * density).toInt()
-        y = if (HailData.shakeFloatingBallY != Int.MIN_VALUE) HailData.shakeFloatingBallY
-        else metrics.heightPixels / 3
+        if (offscreen) {
+            // 隐藏态：两个方向都推到屏幕外的负坐标，比推到右侧屏外更保险
+            // （右侧依赖 widthPixels，横竖屏切换后旧值可能落回屏内）；负坐标同样依赖 FLAG_LAYOUT_NO_LIMITS
+            x = -OFFSCREEN_OFFSET_PX
+            y = -OFFSCREEN_OFFSET_PX
+        } else {
+            x = if (HailData.shakeFloatingBallX != Int.MIN_VALUE) HailData.shakeFloatingBallX
+            else metrics.widthPixels - size - (BALL_MARGIN_DP * density).toInt()
+            y = if (HailData.shakeFloatingBallY != Int.MIN_VALUE) HailData.shakeFloatingBallY
+            else metrics.heightPixels / 3
+        }
     }
 
     private fun detachFloatingBall() {
@@ -319,7 +325,7 @@ class FloatingBallService : Service() {
         /** 悬浮球尺寸小于该值（dp）时把窗口移出屏幕外 */
         const val MIN_VISIBLE_SIZE_DP = 5
 
-        /** 移出屏幕时的横向偏移（px），足够远以保证任何 ROM 都不会把它拉回可见区域 */
+        /** 移出屏幕时的偏移（px），x/y 同时取负值，足够远以保证任何 ROM 都不会把它拉回可见区域 */
         const val OFFSCREEN_OFFSET_PX = 500
         const val BALL_LONG_PRESS_MS = 500L
 
