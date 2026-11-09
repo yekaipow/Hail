@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
@@ -121,6 +122,17 @@ class FloatingBallService : Service() {
         }
         if (floatingBall == null) attachFloatingBall()
         return START_STICKY
+    }
+
+    /**
+     * 横竖屏切换、分屏、折叠屏展开都会走到这里：屏幕尺寸变了，
+     * 记忆坐标就可能越界，重建一次让 [buildBallParams] 重新夹回屏内。
+     */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (HailData.shakeFloatingBall && floatingBall != null) {
+            mainHandler.post { runCatching { rebuildFloatingBall() } }
+        }
     }
 
     override fun onDestroy() {
@@ -253,9 +265,15 @@ class FloatingBallService : Service() {
             x = -OFFSCREEN_OFFSET_PX
             y = -OFFSCREEN_OFFSET_PX
         } else {
-            x = if (HailData.shakeFloatingBallX != Int.MIN_VALUE) HailData.shakeFloatingBallX
+            // 记忆坐标是「记住时那块屏幕」的绝对值：横竖屏切换、分屏、换机型后必须夹回当前屏内，
+            // 否则球会停在屏幕外，用户既看不见也拖不回来
+            val maxX = (metrics.widthPixels - size).coerceAtLeast(0)
+            val maxY = (metrics.heightPixels - size).coerceAtLeast(0)
+            x = if (HailData.shakeFloatingBallX != Int.MIN_VALUE)
+                HailData.shakeFloatingBallX.coerceIn(0, maxX)
             else metrics.widthPixels - size - (BALL_MARGIN_DP * density).toInt()
-            y = if (HailData.shakeFloatingBallY != Int.MIN_VALUE) HailData.shakeFloatingBallY
+            y = if (HailData.shakeFloatingBallY != Int.MIN_VALUE)
+                HailData.shakeFloatingBallY.coerceIn(0, maxY)
             else metrics.heightPixels / 3
         }
     }
