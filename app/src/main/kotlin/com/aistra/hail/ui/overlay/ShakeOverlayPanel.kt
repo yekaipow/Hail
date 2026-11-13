@@ -35,11 +35,8 @@ import com.google.android.material.card.MaterialCardView
 import com.google.android.material.color.MaterialColors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -91,9 +88,6 @@ class ShakeOverlayPanel(
     private var apps: List<OverlayApp> = emptyList()
     private var runningApps: List<RunningApp> = emptyList()
 
-    /** 面板显示期间盯着「正在运行」区，应用一退出就冻结 */
-    private var watchJob: Job? = null
-
     /** 「正在运行」区的标题与网格；无运行中应用时整块 GONE，不占高度 */
     private val runningTitle = TextView(context)
     private val runningContainer = LinearLayout(context)
@@ -126,53 +120,7 @@ class ShakeOverlayPanel(
 
     /** 窗口被移除时调用，停止后台协程 */
     fun release() {
-        stopRunningWatch()
         scope.cancel()
-    }
-
-    override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
-        startRunningWatch()
-    }
-
-    override fun onDetachedFromWindow() {
-        stopRunningWatch()
-        super.onDetachedFromWindow()
-    }
-
-    /**
-     * 面板显示期间每 [WATCH_INTERVAL_MS] 查一次进程：
-     * 「正在运行」区里的应用如果进程没了（自己退出、任务被划走被杀），直接冻结并移出该区。
-     *
-     * 面板本身就是「要不要冻」的操作界面，用户既然把它摆在眼前，
-     * 消失即冻结比再点一次更符合预期。
-     */
-    private fun startRunningWatch() {
-        watchJob?.cancel()
-        watchJob = scope.launch {
-            while (isActive) {
-                delay(WATCH_INTERVAL_MS)
-                // 查询失败返回 null：不能当成「全都退出了」，跳过这一轮
-                val packages = withContext(Dispatchers.IO) { HProcess.runningPackages() }
-                if (packages == null) continue
-                val gone = runningApps.filterNot { it.packageName in packages }
-                if (gone.isEmpty()) continue
-                val frozen = withContext(Dispatchers.IO) {
-                    gone.filter {
-                        runCatching { AppManager.setAppFrozen(it.packageName, true) }.getOrDefault(false)
-                    }
-                }
-                if (frozen.isEmpty()) continue
-                frozen.forEach { HUI.showToast(R.string.msg_freeze, it.label) }
-                // 重新拉一次数据：主列表里的冻结状态也跟着更新
-                reload()
-            }
-        }
-    }
-
-    private fun stopRunningWatch() {
-        watchJob?.cancel()
-        watchJob = null
     }
 
     /** 面板每次显示时重新拉取数据并渲染（关掉期间冻结状态可能已变化） */
@@ -639,9 +587,6 @@ class ShakeOverlayPanel(
 
         /** 「正在运行」区最多展示两行，再多就不值得在这个面板里翻 */
         const val MAX_RUNNING_ITEMS = RUNNING_COLUMNS * 2
-
-        /** 面板显示期间检查「正在运行」区的间隔（毫秒） */
-        const val WATCH_INTERVAL_MS = 3000L
 
         /**
          * 读取首页「冻结」区的同一份数据：UnfrozenStore 里待处理的应用。
