@@ -28,6 +28,7 @@ import com.aistra.hail.app.UnfrozenStore
 import com.aistra.hail.utils.AppIconCache
 import com.aistra.hail.utils.HActions
 import com.aistra.hail.utils.HPackages
+import com.aistra.hail.utils.HProcess
 import com.aistra.hail.utils.HUI
 import com.aistra.hail.utils.NameComparator
 import com.google.android.material.card.MaterialCardView
@@ -38,6 +39,16 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+/**
+ * 「正在运行」区的条目：同样是已解冻的应用，但图标按 [RUNNING_ICON_DP] 单独解码，
+ * 只有主列表的一半大小。
+ */
+private data class RunningApp(
+    val packageName: String,
+    val label: String,
+    val icon: Bitmap?
+)
 
 /** 面板里一条应用记录，图标已预先解码成 Bitmap，避免反复加载 */
 private data class OverlayApp(
@@ -75,6 +86,13 @@ class ShakeOverlayPanel(
     private val gridScroll = ScrollView(context)
     private val titleView = TextView(context)
     private var apps: List<OverlayApp> = emptyList()
+    private var runningApps: List<RunningApp> = emptyList()
+
+    /** 「正在运行」区的标题与网格；无运行中应用时整块 GONE，不占高度 */
+    private val runningTitle = TextView(context)
+    private val runningContainer = LinearLayout(context)
+    private val runningSection = LinearLayout(context)
+    private val runningDivider by lazy { buildDivider().apply { visibility = View.GONE } }
 
     /** 冻结模式开关：关闭时点击图标只打开/解冻；开启后点击即冻结。每次弹出面板自动复位 */
     private var freezeMode = false
@@ -131,11 +149,38 @@ class ShakeOverlayPanel(
                 FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
             )
         }
+        runningTitle.apply {
+            textSize = 11f
+            gravity = Gravity.CENTER_VERTICAL
+            setTextColor(colorOnSurfaceVariant)
+            setPadding(dp(16), 0, dp(16), 0)
+        }
+        runningContainer.apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            // 上下留白都靠格子自身的空隙，不额外加 padding，否则窗口高度会算少
+            setPadding(dp(6), 0, dp(6), 0)
+        }
+        if (runningSection.childCount == 0) {
+            runningSection.orientation = LinearLayout.VERTICAL
+            runningSection.visibility = View.GONE
+            runningSection.addView(
+                runningTitle,
+                LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(RUNNING_TITLE_DP))
+            )
+            runningSection.addView(
+                runningContainer,
+                LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+            )
+        }
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             addView(buildHeader(), LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(HEADER_DP)))
             addView(buildDivider())
             addView(gridScroll, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(EMPTY_HEIGHT_DP)))
+            // 主列表下方：已解冻且进程仍在运行的应用，点一下即冻结
+            addView(runningDivider)
+            addView(runningSection, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
             addView(buildDivider())
             addView(buildFooter(), LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         }
@@ -258,7 +303,11 @@ class ShakeOverlayPanel(
 
     private fun reload() {
         scope.launch {
-            apps = withContext(Dispatchers.IO) { loadApps(context) }
+            val loaded = withContext(Dispatchers.IO) { loadApps(context) }
+            // 「正在运行」区是主列表的子集，复用已解冻结果，避免重复查冻结状态
+            val running = withContext(Dispatchers.IO) { loadRunningApps(context, loaded) }
+            apps = loaded
+            runningApps = running
             render()
         }
     }
@@ -304,13 +353,92 @@ class ShakeOverlayPanel(
          * 这里所有部件都是固定高度，总高度直接算出来显式固化给窗口。
          */
         val contentHeight = if (rows.isEmpty()) dp(EMPTY_HEIGHT_DP) else rows.size * dp(CELL_SIZE_DP)
-        // 视口高度封顶到屏幕可用高度：内容再多也只滚动，不会把底部按钮顶出屏幕
-        val viewportHeight = contentHeight.coerceAtMost(maxGridViewportHeight())
+        val runningHeight = renderRunning()
+        // 视口高度封顶到屏幕可用高度：内容再多也只滚动，不会把底部按钮顶出屏幕。
+        // 「正在运行」区占掉的高度要先让出来，否则两块叠加会把底部按钮挤到屏幕外
+        val available = (maxGridViewportHeight() - runningHeight).coerceAtLeast(dp(EMPTY_HEIGHT_DP))
+        val viewportHeight = contentHeight.coerceAtMost(available)
         (gridContainer.layoutParams as FrameLayout.LayoutParams).height = contentHeight
         (gridScroll.layoutParams as LinearLayout.LayoutParams).height = viewportHeight
         gridScroll.requestLayout()
-        val totalHeight = dp(HEADER_DP) + dp(FOOTER_DP) + viewportHeight + 2 // + 两条 1px 分隔线
+        val totalHeight = dp(HEADER_DP) + dp(FOOTER_DP) + viewportHeight + runningHeight +
+            (if (runningHeight > 0) 3 else 2) // 分隔线：标题下、区上、按钮上
         post { onContentHeightChanged?.invoke(totalHeight) }
+    }
+
+    /**
+     * 渲染「正在运行」区，返回它占用的高度（px）。
+     * 没有运行中的应用时整块隐藏并返回 0，窗口高度计算据此跳过。
+     */
+    private fun renderRunning(): Int {
+        runningContainer.removeAllViews()
+        if (runningApps.isEmpty()) {
+            runningSection.visibility = View.GONE
+            runningDivider.visibility = View.GONE
+            return 0
+        }
+        runningTitle.text = "${context.getString(R.string.shake_running)} (${runningApps.size})"
+        val cell = dp(RUNNING_CELL_DP)
+        val rows = runningApps.chunked(RUNNING_COLUMNS)
+        rows.forEach { rowApps ->
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
+            rowApps.forEach { app ->
+                row.addView(buildRunningCell(app), LinearLayout.LayoutParams(cell, cell))
+            }
+            // 与主列表一致：不足一行用透明占位补齐，保证整行宽度恒定
+            repeat(RUNNING_COLUMNS - rowApps.size) {
+                row.addView(View(context), LinearLayout.LayoutParams(cell, cell))
+            }
+            runningContainer.addView(row, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, cell))
+        }
+        runningSection.visibility = View.VISIBLE
+        runningDivider.visibility = View.VISIBLE
+        return dp(RUNNING_TITLE_DP) + rows.size * cell
+    }
+
+    /** 「正在运行」区的格子：图标为主列表的一半，点击即冻结 */
+    private fun buildRunningCell(app: RunningApp) = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        isClickable = true
+        setOnClickListener { onRunningClick(app) }
+        addView(ImageView(context).apply {
+            val bitmap = app.icon
+            if (bitmap != null) setImageBitmap(bitmap)
+            else {
+                setImageResource(R.drawable.ic_round_frozen)
+                setColorFilter(colorOnSurfaceVariant)
+            }
+            layoutParams = LinearLayout.LayoutParams(dp(RUNNING_ICON_DP), dp(RUNNING_ICON_DP))
+        })
+        addView(TextView(context).apply {
+            text = app.label
+            textSize = 9f
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            gravity = Gravity.CENTER
+            setPadding(0, dp(2), 0, 0)
+            setTextColor(colorOnSurfaceVariant)
+        })
+    }
+
+    /** 点击「正在运行」里的应用：直接冻结；冻结后该条目从本区消失 */
+    private fun onRunningClick(app: RunningApp) {
+        scope.launch {
+            val frozen = withContext(Dispatchers.IO) { AppManager.setAppFrozen(app.packageName, true) }
+            if (!frozen) {
+                notifyFailure()
+                return@launch
+            }
+            HUI.showToast(R.string.msg_freeze, app.label)
+            // 先让条目立刻消失（不等重新查进程），再整体刷新校正
+            runningApps = runningApps.filterNot { it.packageName == app.packageName }
+            render()
+            reload()
+        }
     }
 
     /** 网格视口上限：屏幕高度减去标题、底部按钮和上下留白 */
@@ -451,11 +579,19 @@ class ShakeOverlayPanel(
         /** 面板最多展示的应用数量 */
         const val MAX_ITEMS = 20
 
-        /** 解码尺寸跟随控件尺寸（[ICON_SIZE_DP]）：写死 72px 在 3x 屏只有 24dp，会被拉伸糊掉 */
+        /** 「正在运行」区：图标取主列表的一半，格子相应收缩，一行放得下 6 个 */
+        const val RUNNING_COLUMNS = 6
+        const val RUNNING_CELL_DP = 44
+        const val RUNNING_ICON_DP = ICON_SIZE_DP / 2
+        const val RUNNING_TITLE_DP = 22
+
+        /** 「正在运行」区最多展示两行，再多就不值得在这个面板里翻 */
+        const val MAX_RUNNING_ITEMS = RUNNING_COLUMNS * 2
 
         /**
          * 读取首页「冻结」区的同一份数据：UnfrozenStore 里待处理的应用。
          * 卸载的记录顺手清理，按名称排序后最多取 [MAX_ITEMS] 个。
+         * 图标解码尺寸跟随控件尺寸（[ICON_SIZE_DP]）：写死 72px 在 3x 屏只有 24dp，会被拉伸糊掉。
          */
         fun loadApps(context: Context): List<OverlayApp> {
             val packageManager = context.packageManager
@@ -484,6 +620,32 @@ class ShakeOverlayPanel(
                         }.getOrNull(),
                         frozen = AppManager.isAppFrozen(info.packageName),
                         pinned = UnfrozenStore.isLocked(info.packageName)
+                    )
+                }
+        }
+
+        /**
+         * 「正在运行」区数据：主列表里已解冻、且进程确实还在跑的应用。
+         *
+         * 复用 [base]（冻结状态已算好、AppInfo 已构造），这里只多一次 ps 查询；
+         * 无特权或查询失败时返回空列表，该区随之隐藏。
+         */
+        fun loadRunningApps(context: Context, base: List<OverlayApp>): List<RunningApp> {
+            val candidates = base.filter { !it.frozen }
+            if (candidates.isEmpty()) return emptyList()
+            val packages = HProcess.runningPackages() ?: return emptyList()
+            val iconSize = (RUNNING_ICON_DP * context.resources.displayMetrics.density).toInt()
+            return candidates
+                .filter { it.packageName in packages }
+                .take(MAX_RUNNING_ITEMS)
+                .mapNotNull { app ->
+                    val info = AppInfo(app.packageName).applicationInfo ?: return@mapNotNull null
+                    RunningApp(
+                        packageName = app.packageName,
+                        label = app.label,
+                        icon = runCatching {
+                            AppIconCache.getOrLoadBitmap(context, info, HPackages.myUserId, iconSize)
+                        }.getOrNull()
                     )
                 }
         }
