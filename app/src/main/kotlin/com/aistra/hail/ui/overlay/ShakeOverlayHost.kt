@@ -10,9 +10,16 @@ import android.view.WindowManager
 import com.aistra.hail.R
 import com.aistra.hail.app.HailData
 import com.aistra.hail.ui.main.MainActivity
+import com.aistra.hail.utils.HFreeform
 import com.aistra.hail.utils.HIsland
 import com.aistra.hail.utils.HTarget
 import com.aistra.hail.utils.HUI
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 摇一摇悬浮窗的宿主。
@@ -26,6 +33,9 @@ import com.aistra.hail.utils.HUI
  */
 class ShakeOverlayHost(private val context: Context) {
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+
+    /** 打开应用的协程作用域：freeform 链路要跑 shell + 等待，不能占主线程 */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     /** 唯一的窗口内容，懒创建后一直复用 */
     private var panel: ShakeOverlayPanel? = null
@@ -96,6 +106,8 @@ class ShakeOverlayHost(private val context: Context) {
             runCatching { windowManager.removeViewImmediate(panelView) }
             runCatching { panelView.release() }
         }
+        // 窗口清理完再收协程，避免正在进行的打开流程把已释放的宿主当活着的用
+        scope.cancel()
     }
 
     private fun createPanel() = ShakeOverlayPanel(
@@ -161,12 +173,32 @@ class ShakeOverlayHost(private val context: Context) {
 
     /** @param packageName 为 null 时打开 Hail 主界面 */
     private fun openApp(packageName: String?) {
-        runCatching {
-            if (packageName == null) {
+        if (packageName == null) {
+            runCatching {
                 context.startActivity(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                return@runCatching
+            }.onFailure { HUI.showToast(R.string.activity_not_found) }
+            return
+        }
+        if (HailData.workingMode == HailData.MODE_ISLAND_HIDE) HIsland.ensureLaunchIntentExists(packageName)
+        /*
+         * 横屏 + 有特权：全屏应用会把悬浮窗整个盖住，改用 freeform 小窗打开，
+         * 让应用只占屏幕中间一块。已有任务时是调到前台，不会 force-stop。
+         * 这条链路要跑几条 shell 命令并等待窗口建立，必须离开主线程。
+         */
+        if (HFreeform.available() && HFreeform.isLandscape(context)) {
+            scope.launch {
+                val opened = withContext(Dispatchers.IO) {
+                    runCatching { HFreeform.open(context, packageName) }.getOrDefault(false)
+                }
+                if (!opened) startLaunchIntent(packageName)
             }
-            if (HailData.workingMode == HailData.MODE_ISLAND_HIDE) HIsland.ensureLaunchIntentExists(packageName)
+            return
+        }
+        startLaunchIntent(packageName)
+    }
+
+    private fun startLaunchIntent(packageName: String) {
+        runCatching {
             val intent = context.packageManager.getLaunchIntentForPackage(packageName)
                 ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 ?: throw IllegalStateException("no launch intent")
