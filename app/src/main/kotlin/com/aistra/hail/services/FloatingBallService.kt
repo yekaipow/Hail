@@ -19,7 +19,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
-import android.widget.ImageView
+import android.widget.FrameLayout
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -36,16 +36,21 @@ import com.aistra.hail.utils.HUI
 import kotlin.math.abs
 
 /**
- * 悬浮球前台服务：独立于摇一摇，只负责悬浮球的创建与手势。
+ * 贴边悬浮条服务：独立于摇一摇，只负责屏幕右边缘那条细线的创建与手势。
  *
- * 点击悬浮球开关自己的 [ShakeOverlayHost] 面板（不依赖摇一摇服务是否运行），
- * 长按执行设置所选的动作（全部冻结 / 锁屏）。拖动调位置并记忆。
+ * 形态是一条贴在屏幕右边缘的细线（长度由设置里的「悬浮球大小」控制），
+ * 纵向拖动挪位置；向内侧滑（向左）或点击开关自己的 [ShakeOverlayHost] 面板；
+ * 长按执行设置所选的动作（全部冻结 / 锁屏）。
+ * 打开面板前会把悬浮条重新挂到 WindowManager，抢占 overlay 层最上面。
  */
 class FloatingBallService : Service() {
     private val channelId = javaClass.simpleName
     /** 全局唯一面板宿主：与摇一摇共用，杜绝多窗口 */
     private lateinit var panelHost: ShakeOverlayHost
     private var floatingBall: View? = null
+
+    /** 悬浮条当前的窗口参数（bringBallToFront 重新挂载时要用） */
+    private var ballParams: WindowManager.LayoutParams? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var rebuildBallRunnable: Runnable? = null
     private val windowManager by lazy { getSystemService(WINDOW_SERVICE) as WindowManager }
@@ -155,36 +160,45 @@ class FloatingBallService : Service() {
     private fun attachFloatingBall() {
         if (!Settings.canDrawOverlays(this)) return
         val density = resources.displayMetrics.density
-        val size = (HailData.floatingBallSize * density).toInt().coerceAtLeast(1)
         val metrics = resources.displayMetrics
-        // 尺寸小于阈值：窗口推到屏幕外；必须配 FLAG_LAYOUT_NO_LIMITS，否则系统会把越界坐标限制回屏内
+        val barWidth = (EDGE_BAR_WIDTH_DP * density).toInt().coerceAtLeast(2)
+        val barLength = (HailData.floatingBallSize * density).toInt().coerceAtLeast(1)
+        // 触摸热区比视觉细条宽得多：4dp 宽的线手指根本摁不准，
+        // 所以窗口做宽一点，里面只有贴着边缘的那 [EDGE_BAR_WIDTH_DP] 是可见的
+        val touchWidth = (TOUCH_WIDTH_DP * density).toInt().coerceAtLeast(barWidth)
+        // 长度小于阈值：窗口推到屏幕外；必须配 FLAG_LAYOUT_NO_LIMITS，否则系统会把越界坐标限制回屏内
         val offscreen = HailData.floatingBallSize < MIN_VISIBLE_SIZE_DP
-        val params = buildBallParams(size, metrics, offscreen, density)
-        // 已有悬浮球（上次拆建失败等残留）则复用更新，绝不再 add 一个新窗口，避免多球叠加
+        val params = buildBallParams(touchWidth, barLength, metrics, offscreen)
+        ballParams = params
+        // 已有悬浮条（上次拆建失败等残留）则复用更新，绝不再 add 一个新窗口，避免多条叠加
         val existing = floatingBall
         if (existing != null) {
             if (existing.parent != null) runCatching { windowManager.updateViewLayout(existing, params) }
             else runCatching { windowManager.addView(existing, params) }
             return
         }
-        val ball = ImageView(this).apply {
-            setImageDrawable(applicationInfo.loadIcon(packageManager))
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(BALL_BACKGROUND)
-            }
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            setPadding(size / 5, size / 5, size / 5, size / 5)
+        val ball = FrameLayout(this).apply {
+            addView(
+                View(this@FloatingBallService).apply {
+                    background = GradientDrawable().apply {
+                        // 细长圆角条：圆角取半宽，两端收成半圆，看起来就是贴在边上的一条线
+                        cornerRadius = barWidth / 2f
+                        setColor(BALL_BACKGROUND)
+                    }
+                },
+                FrameLayout.LayoutParams(barWidth, FrameLayout.LayoutParams.MATCH_PARENT, Gravity.RIGHT)
+            )
         }
-        var startX = 0
         var startY = 0
         var downRawX = 0f
         var downRawY = 0f
-        var moved = false
+        var dragging = false
+        var swiping = false
         var longPressed = false
         val touchSlop = ViewConfiguration.get(this).scaledTouchSlop
+        val swipeThreshold = (SWIPE_OPEN_DP * density).toInt().coerceAtLeast(touchSlop)
         val longPressRunnable = Runnable {
-            if (!moved) {
+            if (!dragging && !swiping) {
                 longPressed = true
                 onFloatingBallLongPress()
             }
@@ -194,37 +208,40 @@ class FloatingBallService : Service() {
                 MotionEvent.ACTION_DOWN -> {
                     downRawX = event.rawX
                     downRawY = event.rawY
-                    startX = params.x
                     startY = params.y
-                    moved = false
+                    dragging = false
+                    swiping = false
                     longPressed = false
                     mainHandler.postDelayed(longPressRunnable, BALL_LONG_PRESS_MS)
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.rawX - downRawX
                     val dy = event.rawY - downRawY
-                    if (!moved && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
-                        moved = true
+                    if (!dragging && !swiping && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
+                        // 以竖直为主 → 拖动挪位置；以水平为主 → 侧滑（不跟手，松手后判定）
+                        if (abs(dy) >= abs(dx)) dragging = true else swiping = true
                         mainHandler.removeCallbacks(longPressRunnable)
                     }
-                    if (moved) {
-                        params.x = startX + dx.toInt()
+                    if (dragging) {
                         params.y = startY + dy.toInt()
                         runCatching { windowManager.updateViewLayout(ball, params) }
                     }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     mainHandler.removeCallbacks(longPressRunnable)
-                    if (event.actionMasked == MotionEvent.ACTION_UP) {
-                        if (moved) {
-                            HailData.shakeFloatingBallX = params.x
-                            HailData.shakeFloatingBallY = params.y
-                        } else if (!longPressed) {
-                            /*
-                             * 点击悬浮球 = 面板开关，且与摇一摇共用同一块面板位：
-                             * 任意一方已经显示 → 收起；都没有 → 先收起别人的再显示自己的。
-                             */
-                            if (panelHost.isShowing) panelHost.hide() else panelHost.show()
+                    if (dragging) {
+                        // 松手后夹回屏内并记住位置；横向始终贴边，只记忆纵向
+                        val maxY = (metrics.heightPixels - params.height).coerceAtLeast(0)
+                        params.y = params.y.coerceIn(0, maxY)
+                        runCatching { windowManager.updateViewLayout(ball, params) }
+                        HailData.shakeFloatingBallY = params.y
+                    }
+                    if (event.actionMasked == MotionEvent.ACTION_UP && !longPressed) {
+                        when {
+                            // 贴在右边缘，向内侧滑就是向左
+                            swiping && event.rawX - downRawX <= -swipeThreshold -> openPanel()
+                            dragging -> Unit
+                            else -> togglePanel()
                         }
                     }
                 }
@@ -237,21 +254,23 @@ class FloatingBallService : Service() {
         }
     }
 
-    /** 重建悬浮球：始终先拆后建，隐藏状态下改回大尺寸也要重新出现 */
+    /** 重建悬浮条：始终先拆后建，隐藏状态下改回可见长度也要重新出现 */
     private fun rebuildFloatingBall() {
         detachFloatingBall()
         attachFloatingBall()
     }
 
-    /** 计算悬浮球窗口参数：尺寸、屏幕外偏移、记忆位置 */
+    /**
+     * 计算悬浮条窗口参数：横向固定贴右边缘（x = 屏宽 - 条宽），纵向沿用记忆位置。
+     */
     private fun buildBallParams(
-        size: Int,
+        width: Int,
+        height: Int,
         metrics: android.util.DisplayMetrics,
-        offscreen: Boolean,
-        density: Float
+        offscreen: Boolean
     ): WindowManager.LayoutParams = WindowManager.LayoutParams(
-        size,
-        size,
+        width,
+        height,
         if (HTarget.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         else WindowManager.LayoutParams.TYPE_PHONE,
         if (offscreen) WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
@@ -260,21 +279,44 @@ class FloatingBallService : Service() {
     ).apply {
         gravity = Gravity.TOP or Gravity.START
         if (offscreen) {
-            // 隐藏态：两个方向都推到屏幕外的负坐标，比推到右侧屏外更保险
-            // （右侧依赖 widthPixels，横竖屏切换后旧值可能落回屏内）；负坐标同样依赖 FLAG_LAYOUT_NO_LIMITS
+            // 隐藏态：两个方向都推到屏幕外的负坐标
             x = -OFFSCREEN_OFFSET_PX
             y = -OFFSCREEN_OFFSET_PX
         } else {
-            // 记忆坐标是「记住时那块屏幕」的绝对值：横竖屏切换、分屏、换机型后必须夹回当前屏内，
-            // 否则球会停在屏幕外，用户既看不见也拖不回来
-            val maxX = (metrics.widthPixels - size).coerceAtLeast(0)
-            val maxY = (metrics.heightPixels - size).coerceAtLeast(0)
-            x = if (HailData.shakeFloatingBallX != Int.MIN_VALUE)
-                HailData.shakeFloatingBallX.coerceIn(0, maxX)
-            else metrics.widthPixels - size - (BALL_MARGIN_DP * density).toInt()
-            y = if (HailData.shakeFloatingBallY != Int.MIN_VALUE)
+            // 贴边不留边距，视觉上就是贴着屏幕右边缘的一条线
+            x = metrics.widthPixels - width
+            val maxY = (metrics.heightPixels - height).coerceAtLeast(0)
+            y = if (HailData.shakeFloatingBallY != Int.MIN_VALUE) {
                 HailData.shakeFloatingBallY.coerceIn(0, maxY)
-            else metrics.heightPixels / 3
+            } else {
+                (metrics.heightPixels - height) / 3
+            }
+        }
+    }
+
+    /** 点击悬浮条：面板开关 */
+    private fun togglePanel() {
+        if (panelHost.isShowing) panelHost.hide() else openPanel()
+    }
+
+    /**
+     * 打开面板，并把悬浮条提到 overlay 层最上面。
+     *
+     * 同一应用的 overlay 窗口按添加顺序叠放，重新挂载一次就排到最上层，面板随后添加又在它之上。
+     * 注意：这只能压过同类 overlay 窗口，无法越过系统窗口（状态栏、锁屏）或系统签名的更高层窗口。
+     */
+    private fun openPanel() {
+        bringBallToFront()
+        panelHost.show()
+    }
+
+    /** 把悬浮条重新挂到 WindowManager（remove + add），抢占 overlay 层的最上层 */
+    private fun bringBallToFront() {
+        val ball = floatingBall ?: return
+        val params = ballParams ?: return
+        runCatching {
+            if (ball.parent != null) windowManager.removeViewImmediate(ball)
+            windowManager.addView(ball, params)
         }
     }
 
@@ -286,7 +328,10 @@ class FloatingBallService : Service() {
         runCatching {
             if (ball.parent != null) windowManager.removeViewImmediate(ball)
         }
-        if (ball.parent == null) floatingBall = null
+        if (ball.parent == null) {
+            floatingBall = null
+            ballParams = null
+        }
     }
 
     /** 长按悬浮球：按设置执行全部冻结或锁屏，阻塞调用放在后台线程 */
@@ -338,9 +383,17 @@ class FloatingBallService : Service() {
 
     private companion object {
         const val NOTIFICATION_ID = 102
-        const val BALL_MARGIN_DP = 16
 
-        /** 悬浮球尺寸小于该值（dp）时把窗口移出屏幕外 */
+        /** 悬浮条可见部分的宽度（dp）：一条贴边的细线，不再显示圆球 */
+        const val EDGE_BAR_WIDTH_DP = 4
+
+        /** 触摸热区宽度（dp）：窗口比可见细条宽，保证手指能摁住 */
+        const val TOUCH_WIDTH_DP = 24
+
+        /** 侧滑打开面板的水平距离阈值（dp），从右边缘向内（向左）滑 */
+        const val SWIPE_OPEN_DP = 24
+
+        /** 悬浮条长度小于该值（dp）时把窗口移出屏幕外 */
         const val MIN_VISIBLE_SIZE_DP = 5
 
         /** 移出屏幕时的偏移（px），x/y 同时取负值，足够远以保证任何 ROM 都不会把它拉回可见区域 */
@@ -350,7 +403,7 @@ class FloatingBallService : Service() {
         /** 尺寸变化重建的防抖窗口（ms），合并滑杆拖动期间的连续变化 */
         const val REBUILD_DEBOUNCE_MS = 300L
 
-        /** 半透明深灰圆底，深浅主题下都能看清 */
+        /** 半透明深灰底色：贴边细条用，深浅主题下都能看清 */
         const val BALL_BACKGROUND = 0x99333333.toInt()
 
         /** 通知上的「关闭」按钮 */
