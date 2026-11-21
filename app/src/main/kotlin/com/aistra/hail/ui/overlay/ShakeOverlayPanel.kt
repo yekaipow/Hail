@@ -596,6 +596,17 @@ class ShakeOverlayPanel(
         fun loadApps(context: Context): List<OverlayApp> {
             val packageManager = context.packageManager
             val iconSize = (ICON_SIZE_DP * context.resources.displayMetrics.density).toInt()
+            /*
+             * 先把「已冻结但没锁定」的残留清出冻结栏：
+             * 外部冻结（长按全冻、划走即冻结服务、快捷方式等）不经过面板的点击流程，
+             * 不会触发 AppManager 里的移除，这些条目会一直占着表格名额。
+             * 锁定的应用保留（灰显 + ❄️），方便再点一次解冻。
+             * 先按内存里的锁定表过滤，再做冻结状态查询，减少 binder 调用。
+             */
+            UnfrozenStore.packages()
+                .filterNot { UnfrozenStore.isLocked(it) }
+                .filter { AppManager.isAppFrozen(it) }
+                .forEach { UnfrozenStore.remove(it) }
             return UnfrozenStore.packages()
                 .map { AppInfo(it) }
                 .filter {
